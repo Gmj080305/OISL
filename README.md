@@ -1,122 +1,151 @@
-# OISL
-# optical inter satellite link
-An Optical Inter-Satellite Link (OISL) is essentially the space equivalent of fiber-optic internet—minus the actual cables.
-Instead of using traditional radio waves (RF) to beam data back and forth, satellites equipped with OISLs use infrared lasers to talk directly to one another in the vacuum of space.
-## A] What typical system model consists of((project model may differ):
-#### 1. The Transmitter Model
-This models how the light is generated and sent. It includes parameters like:
-* **Laser Power ($P_t$):** How bright the laser is.
-* **Wavelength ($\lambda$):** Usually in the infrared spectrum (e.g., 1550 nm).
-* **Modulation Scheme:** How data is encoded into the light (e.g., turning the laser on and off rapidly, known as On-Off Keying, or using more advanced phase modulation).
+# OISL: Kramers–Kronig self-coherent receiver for optical inter-satellite links
 
-#### 2. The Geometric and Orbital Model
-Satellites are constantly moving relative to each other at hypersonic speeds. This part of the model calculates:
-* The dynamically changing distance ($d$) between satellites.
-* The **Doppler shift** (how the movement stretches or compresses the light waves).
-* The precise angles the satellites must tilt to maintain a line of sight.
+Channel model, rate analysis and waveform simulation of a 1000 km LEO optical
+inter-satellite link (OISL) that uses a **Kramers–Kronig (KK) self-coherent
+receiver with a transmitter-side carrier**.
 
-#### 3. The Channel Model (Free Space)
-This models what happens to the laser beam as it travels through the vacuum of space. The most critical factor here is **Free Space Path Loss ($L_s$)**, which calculates how much the laser beam naturally spreads out over huge distances:
+ECE F266 study project, BITS Pilani, Hyderabad Campus.
 
-$$L_s = \left(\frac{\lambda}{4\pi d}\right)^2$$
+## The idea in one paragraph
 
-It also accounts for **pointing jitter**—the tiny mathematical losses caused by the satellite vibrating or slightly missing its target.
+The transmitter sends a strong CW carrier together with a single-sideband (SSB)
+data signal, both from the same laser, in the same beam and polarisation. At
+the receiver a single photodiode detects the intensity, and the KK relation
+recovers the full complex field in DSP. Because carrier and data share one
+laser and one path, laser phase noise, Doppler shift (up to ±9.9 GHz in LEO) and
+polarisation rotation cancel in square-law detection. The receiver needs no local
+oscillator laser, no frequency locking and no polarisation optics. The price is
+the carrier-to-signal power ratio (CSPR): at κ = 12 dB only about 6 % of the
+transmit power carries data, and κ must exceed the signal's peak-to-average power
+ratio for KK to work.
 
-#### 4. The Receiver Model
-This models how the receiving satellite captures and decodes the light. It includes:
-* **Aperture Size:** The diameter of the collecting telescope.
-* **Sensor Sensitivity:** How good the photodetector is at spotting faint photons.
-* **Noise Sources:** Filtering out background light from the sun, stars, or Earth.
+## Main results (default parameters, QPSK, 1530 nm, P_T = 0.3 W, z = 1000 km)
 
-## B] paper ai summary:
+| Quantity | Value |
+|---|---|
+| On-axis SNR, EDFA pre-amplifier / photodiode only | 31.1 dB / 18.6 dB |
+| Ergodic rate, hard / soft decision | 13.18 / 13.44 Gb/s |
+| Ergodic rate without pre-amplifier | 6.70 Gb/s |
+| Sensitivity at HD-FEC (BER 3.8×10⁻³) | −28.6 dBm |
+| Pointing shape parameter α (σ_s = 5.44 m > w_z = 4.87 m) | 0.20 |
+| Time below QPSK sensitivity | 41 % |
+| Waveform simulation vs analytic SNR | ≤ 0.1 dB down to 0.03·A₀, 0.4 dB at 0.01·A₀ |
 
----
+Pointing jitter, not the KK receiver, limits reliability. Full tables,
+validation runs and their settings are in [`docs/results.md`](docs/results.md).
 
-## 1. Overview of OISLs
-An **Optical Inter-Satellite Link (OISL)** is a wireless communication technology that uses **infrared laser beams** instead of traditional radio frequencies (RF) to transfer data directly between satellites in space.
+![Constellation study](figures/fig36_constellation_study.png)
 
-### Core Advantages:
-* **High Bandwidth:** Operates at optical frequencies, allowing data rates from gigabits to terabits per second.
-* **Lower Latency:** Light travels roughly 30–40% faster through the vacuum of space than through terrestrial fiber-optic cables.
-* **Enhanced Security:** Laser beams are highly directional and narrow, making interception or jamming extremely difficult.
-* **No Spectrum Regulation:** Bypasses the strict international licensing required for RF bands.
+*QPSK at y = A₀ for four carrier/LO placements: A2 transmitter carrier (used
+throughout), B1 receiver optical LO, A1/B3 no carrier, B2 carrier added after
+detection. Only a carrier present at the photodiode lets KK recover the phase.*
 
-### Main Challenge:
-* **Pointing Accuracy:** Satellites traveling at hypersonic speeds (~27,000 km/h) must maintain precise line-of-sight alignment across thousands of kilometers—a challenge comparable to "hitting a bullet with a bullet."
+## Repository layout
 
----
+```
+OISL/
+├── README.md                 this file
+├── CHANGELOG.md              what changed and when
+├── matlab/
+│   ├── oisl_kk_txcarrier.m   main script: analytic model, Monte Carlo, all figures
+│   ├── oisl_kk_channel.m     callable analytic model (for OptiSystem co-simulation)
+│   ├── run_in_octave.m       runs the main script in GNU Octave
+│   └── tests/
+│       └── check_oisl_kk.m   regression checks for oisl_kk_channel.m
+├── figures/                  figures written by oisl_kk_txcarrier.m (PLOT.save = true)
+├── report/                   LaTeX source of the study report
+│   ├── main.tex, chapter1-4.tex
+│   ├── figs/                 figures the LaTeX includes (see report/REVISIONS.md)
+│   └── REVISIONS.md          text changes needed to match the current code
+├── docs/
+│   ├── background.md         OISL system-model notes and base-paper summary
+│   ├── kk_oisl_model.md      the KK-OISL model: equations and simulation chain
+│   ├── results.md            reference numbers from the current code
+│   └── open_questions.md     open questions, limitations, next steps
+├── references/
+│   └── README.md             papers used, with links
+└── slides/                   NotebookLM summary decks
+```
 
-## 2. Components of an OISL System Model
-A system model acts as a predictive simulation tool used to assess performance before physical deployment. It consists of four fundamental components:
+## How to run
 
-### A. The Transmitter Model
-Defines how light is generated and encoded.
-* **Laser Power ($P_t$):** The initial optical output power.
-* **Wavelength ($\lambda$):** Typically in the near-infrared spectrum (e.g., 1550 nm).
-* **Modulation Scheme:** How digital data is encoded onto the light wave (e.g., basic On-Off Keying [IM/DD] or advanced phase modulation [Coherent]).
+**MATLAB** (written for R2018b or newer; no toolboxes required). This revision
+was tested in GNU Octave 8.4 only. Run it once in MATLAB and compare with
+`docs/results.md` before relying on it.
 
-### B. The Geometric and Orbital Model
-Calculates the dynamic structural changes over time.
-* **Distance ($d$):** Continuous variance in the distance separating the spacecraft.
-* **Doppler Shift:** Frequency shifts due to relative high-speed velocities.
-* **Pointing Angles:** The calculated spatial orientation required to preserve the line of sight.
+```matlab
+cd matlab
+oisl_kk_txcarrier          % edit the RUN.* switches at the top first
+run tests/check_oisl_kk.m  % regression checks, about 10 s
+```
 
-### C. The Channel Model (Free Space)
-Accounts for the environment through which the beam propagates.
-* **Free Space Path Loss ($L_s$):** The geometric dispersion of the laser beam over a distance, modeled as:
-    $$L_s = \left(\frac{\lambda}{4\pi d}\right)^2$$
-* **Pointing Jitter:** Signal degradation caused by physical satellite vibrations.
+Set `PLOT.save = true` to write every figure to `figures/` as PNG and PDF.
+The Communications Toolbox is optional: if present, `PLOT.use_scatterplot = true`
+also draws one overlay with `scatterplot()`.
 
-### D. The Receiver Model
-Defines how light is captured and decoded.
-* **Aperture Size:** Telescope diameter used to collect incoming photons.
-* **Sensor Sensitivity:** The minimum power threshold required by the photodetector.
-* **Noise Sources:** External optical interference from the Sun, stars, or Earth reflection.
+**GNU Octave** (tested with 8.4). Octave needs script-local functions defined
+before use, so run the wrapper:
 
----
+```bash
+cd matlab
+octave --no-gui run_in_octave.m
+```
 
-## 3. Mathematical Analysis: Step-by-Step Derivation
-Following the theoretical framework established in *“Channel Modeling and Rate Analysis of Optical Inter-Satellite Link (OISL)”* (Shang, Zhang, & Wong), a rigorous analytical evaluation involves four sequential mathematical derivations:
+Octave and MATLAB use different random-number generators, so Monte Carlo numbers
+can differ in the second decimal place, and the measured PAPR can differ by more
+than 1 dB (see `docs/results.md`).
 
-### Step 1: Pointing Error PDF (The Jacobian Transformation)
-Satellite platform vibrations create a horizontal and vertical spatial deviation ($\theta_x, \theta_y \sim \mathcal{N}(0, \sigma_s^2)$). The cumulative radial displacement ($r = \sqrt{\theta_x^2 + \theta_y^2}$) follows a **Rayleigh distribution**:
-$$f_r(r) = \frac{r}{\sigma_s^2} \exp\left( -\frac{r^2}{2\sigma_s^2} \right)$$
+**From other code / OptiSystem**
 
-Using the Gaussian beam profile approximation for spatial channel gain ($h_p$):
-$$h_p \approx A_0 \exp\left( -\frac{2r^2}{w_{eq}^2} \right)$$
+```matlab
+r = oisl_kk_channel('PT', 0.3, 'z', 1500e3, 'mod', 'QPSK');
+fprintf('SNR %.1f dB, ergodic rate %.2f Gb/s\n', r.snr_dB, r.rate_hard/1e9);
+```
 
-By performing a transformation of random variables (solving for $r$ and finding the Jacobian derivative $\left|\frac{dr}{dh_p}\right|$), the variables cancel out to produce the final **Pointing Error Probability Density Function (PDF)**:
-$$f_{h_p}(h_p) = \frac{\gamma^2}{A_0^{\gamma^2}} h_p^{\gamma^2 - 1}, \quad 0 \le h_p \le A_0$$
+`oisl_kk_channel` covers the transmitter-carrier link analytically. Waveform-level
+results (constellations, other carrier placements) come from the main script.
 
-Where $\gamma = \frac{w_{eq}}{2\sigma_s}$ is the vital **Jitter-to-Beam Ratio** ($w_{eq}$ is equivalent beam width; $\sigma_s$ is jitter variance).
+## What each RUN switch produces
 
-### Step 2: Signal-to-Noise Ratio (SNR) Transformation
-The instantaneous SNR ($\gamma_{snr}$) scales based on the detection hardware type:
-$$\gamma_{snr} = \bar{\gamma} \left( h_p \right)^r$$
+| Switch | Output | Default |
+|---|---|---|
+| `RUN.budget` | Table 3.2 noise budget, rates and sensitivity (console) | on |
+| `RUN.freq` | Fig 3.1 / 3.2: rate vs laser frequency over P_T | on |
+| `RUN.snr` | Fig 3.3: rate vs SNR, hard and soft decision | on |
+| `RUN.ybudget` | Fig 3.4: SNR contribution of each noise term vs y | on |
+| `RUN.chanMC` | Fig 3.5a: pointing-loss CDF, channel Monte Carlo | on |
+| `RUN.waveMC` | Fig 3.5b: end-to-end KK waveform simulation vs analytic | on |
+| `RUN.constellation` | Fig 3.6: four carrier/LO placements, one window | on |
+| `RUN.wd` | Fig 3.8: rate vs detector radius | off |
+| `RUN.itu` | Fig 3.9: rate vs P_T at 1530 and 1565 nm | off |
+| `RUN.cspr` | rate vs CSPR (analytic) | off |
+| `RUN.cspr_wave` | SNR vs CSPR (waveform), the reference for the CSPR choice | off |
+| `RUN.jitter`, `RUN.outage` | rate vs jitter σ_s0; outage rate vs ε | off |
+| `RUN.mpkk` | Figs 3.10–3.13: CKK / GKK / MP-KK with an imposed front-end distortion | off |
+| `RUN.csv` | CSV export of rate vs frequency and power | off |
 
-* For **Coherent Detection**, $r = 1$ (electrical signal maps linearly to optical amplitude).
-* For **Direct Detection (IM/DD)**, $r = 2$ (electrical signal maps to optical power, squaring the penalty).
+`RUN.mpkk` is a sensitivity study only. The link model itself has no
+nonlinearity or memory, so at the operating CSPR all four receivers give the
+same result; the gain appears only with the imposed distortion. See
+`docs/open_questions.md`.
 
-Mapping the PDF from $h_p$ to $\gamma_{snr}$ yields:
-$$f_{\gamma_{snr}}(\gamma_{snr}) = \frac{\gamma^2}{r A_0^{\gamma^2} \bar{\gamma}^{\frac{\gamma^2}{r}}} \gamma_{snr}^{\frac{\gamma^2}{r} - 1}, \quad 0 \le \gamma_{snr} \le \bar{\gamma} A_0^r$$
+## Status
 
-### Step 3: Setting Up the Ergodic Capacity Integral
-To calculate the average achievable data rate over time under constant vibration, the SNR PDF is substituted into Shannon's capacity formula:
-$$C = \left( \frac{B \cdot \gamma^2}{r A_0^{\gamma^2} \bar{\gamma}^{\frac{\gamma^2}{r}}} \right) \int_{0}^{\bar{\gamma}A_0^r} \log_2(1 + \gamma_{snr}) \cdot \gamma_{snr}^{\frac{\gamma^2}{r} - 1} \, d\gamma_{snr}$$
+- Analytic model and waveform simulation agree; regression checks pass.
+- The report in `report/` predates the October 2026 code changes. Several
+  numbers and statements need updating, listed in
+  [`report/REVISIONS.md`](report/REVISIONS.md).
+- Open items for discussion with the supervisor are in
+  [`docs/open_questions.md`](docs/open_questions.md).
 
-### Step 4: Closed-Form Solution via Meijer G-Function
-Because standard calculus cannot easily compute this fluctuating integral, the logarithmic term is mapped to its equivalent **Meijer G-function** identity:
-$$\log_2(1 + x) = \frac{1}{\ln(2)} G_{2,2}^{1,2} \left[ x \ \vert \ \begin{matrix} 1, 1 \\ 1, 0 \end{matrix} \right]$$
+## References
 
-Integrating the polynomial against the Meijer G-function yields the paper’s definitive, exact **Closed-Form Capacity Solution**:
-$$C = \frac{B \cdot \gamma^2}{r \ln(2) A_0^{\gamma^2} \bar{\gamma}^{\frac{\gamma^2}{r}}} \cdot \left( \bar{\gamma} A_0^r \right)^{\frac{\gamma^2}{r}} G_{3,3}^{1,3} \left[ \bar{\gamma} A_0^r \ \vert \ \begin{matrix} 1 - \frac{\gamma^2}{r}, 1, 1 \\ 1, 0, -\frac{\gamma^2}{r} \end{matrix} \right]$$
+Main sources: Shang, Zhang & Wong (IEEE TVT 2025) for the OISL channel and rate
+model; Mecozzi, Antonelli & Shtaif (Optica 2016) for the KK receiver; Wen et al.
+(Optics Express 2023) for MP-KK. Full list with links in
+[`references/README.md`](references/README.md).
 
----
+## Licence
 
-## 4. Engineering Insights Extracted from the Closed-Form Math
-Systems engineers extract several architectural constraints directly from the structure of this final equation:
-
-1.  **The Jitter Bottleneck:** The equation mathematically proves that if a satellite is vibrating heavily (low $\gamma$), you hit a hard point of diminishing returns. Simply increasing laser power ($P_t$) cannot overcome spatial instability.
-2.  **Fading Penalty ($r=1$ vs $r=2$):** The presence of $r$ as a denominator exponent mathematically establishes the exact decibel (dB) penalty incurred when picking a cheaper Direct Detection layout over a resilient Coherent architecture under a given jitter threshold.
-3.  **Capacity Ceilings:** Evaluating the mathematical limits as SNR approaches infinity ($\bar{\gamma} \to \infty$) highlights an upper bound. Random channel flickering sets an absolute maximum data ceiling that power amplification cannot breach.
-4.  **Optimal Beam Divergence:** Engineers use the final formula to calculate $\frac{dC}{dw_{eq}} = 0$. This solves the structural trade-off between a narrow beam (high peak power, but hard to aim) and a wide beam (low power, but easy to track), giving the mathematically perfect lens configuration.
+<!-- TODO: no licence chosen yet. Without one, others may read but not reuse the
+code. MIT is a common choice for academic code. -->

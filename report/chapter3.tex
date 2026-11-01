@@ -1,0 +1,373 @@
+\chapter{Integration of Kramers--Kronig Architecture in Optical Inter-Satellite Link Model}
+
+\section{Mathematical Derivation of KK-OISL Model}
+
+\subsection{Optical Field Representation and Minimum-Phase Condition}
+
+The Kramers--Kronig (KK) receiver needs a strong continuous-wave (CW) tone at the edge of the signal spectrum \cite{mecozzi2016}. In this model the tone (carrier) is generated at the \emph{transmitter} from the same laser and IQ modulator as the data, and travels with the data over the link. A baseband data signal $s(t)$ of symbol rate $B$, normalised to unit average power, is single-sideband (SSB) shifted to the right of the carrier:
+\begin{equation}
+E_{Tx}(t)=\Big[\sqrt{P_c}+\sqrt{P_s}\,s(t)\,e^{i2\pi f_{sh}t}\Big]e^{i\theta_L(t)},\qquad f_{sh}=B_o/2
+\end{equation}
+where $B_o=(1+\beta)B$ is the occupied bandwidth for a pulse roll-off $\beta$, $\theta_L(t)$ is the laser phase noise, $P_c$ is the carrier power and $P_s$ is the signal power. The SSB term occupies $[0,B_o]$, so the carrier lies at the lower edge of the signal spectrum.
+
+The cross term $2\sqrt{P_cP_s}\,\mathrm{Re}\{s\,e^{i2\pi f_{sh}t}\}$ averages to zero, so the total transmit power is $P_T=P_c+P_s$. With the carrier-to-signal power ratio (CSPR) $\kappa=P_c/P_s$:
+\begin{equation}
+P_c=\frac{\kappa}{1+\kappa}P_T,\qquad P_s=\frac{1}{1+\kappa}P_T
+\end{equation}
+Only the fraction $1/(1+\kappa)$ of the transmit power carries data. This is the physical CSPR penalty.
+
+At the receiver aperture both components are attenuated by the same total channel power gain $h=h_{PL}\,h_{PE}$:
+\begin{equation}
+E_{Rx}(t)=\sqrt{h}\Big[\sqrt{P_c}+\sqrt{P_s}\,s(t)\,e^{i2\pi f_{sh}t}\Big]e^{i\theta_L(t)+i\phi_D(t)}
+\end{equation}
+where $\phi_D(t)$ is the Doppler phase. Carrier and data come from the same laser and travel the same path in the same polarisation and spatial mode. The laser phase noise, the Doppler shift, any polarisation rotation and any wavefront tilt are therefore common to both and cancel in square-law detection (eq.~3.5). As a result:
+\begin{itemize}
+\item No local-oscillator frequency locking is needed. For a 550\,km LEO shell the carrier Doppler can reach $\pm9.9$\,GHz; only a residual offset of $\le266$\,kHz between the carrier and the data remains, which is tracked digitally.
+\item No polarisation control is needed.
+\item The CSPR at the receiver equals $\kappa$ for every pointing state.
+\end{itemize}
+
+For exact phase retrieval from intensity, $E_{Rx}(t)$ must be minimum phase. A sufficient condition is that the time trajectory of the field does not encircle the origin:
+\begin{equation}
+\sqrt{P_c}>\sqrt{P_s}\,|s(t)|_{\max}\quad\Longleftrightarrow\quad \kappa>\mathrm{PAPR}_s=\frac{\max|s(t)|^2}{\langle|s(t)|^2\rangle}
+\end{equation}
+\emph{Proof.} Put $u=\sqrt{P_s/P_c}\,s\,e^{i2\pi f_{sh}t}$, with $|u|<1$. Then $\ln(1+u)=\sum_n(-1)^{n+1}u^n/n$ contains only positive frequencies, so its imaginary part (the phase) is the Hilbert transform of its real part, $\ln|1+u|$ \cite{mecozzi2016}. \hfill$\square$
+
+For root-raised-cosine (RRC) pulses with $\beta=0.05$, the simulated PAPR is 8.8\,dB (BPSK), 8.7\,dB (OOK) and 8.5\,dB (QPSK). $\kappa=12$\,dB is used throughout; the noise model of Section~3.1.3 is accurate for $\kappa\ge9$\,dB.
+
+\subsection{Square-Law Detection and KK Phase Reconstruction}
+
+A photodiode with responsivity $\eta$ performs square-law detection to produce the photocurrent $I(t)$:
+\begin{equation}
+I(t)=\underbrace{\eta hP_c}_{\text{Carrier DC Current}}+\underbrace{\eta hP_s|s(t)|^2}_{\text{Signal-Signal Beat Current}}+\underbrace{2\eta h\sqrt{P_cP_s}\,\mathrm{Re}\{s(t)e^{i2\pi f_{sh}t}\}}_{\text{Cross-Beat Signal Current}}+n(t)
+\end{equation}
+The common phases $\theta_L$ and $\phi_D$ have disappeared. The photocurrent is converted to power units by dividing by the responsivity only. No noise is subtracted, and no division by the unknown channel gain is needed:
+\begin{equation}
+I_n(t)=\frac{I(t)}{\eta}
+\end{equation}
+Under the minimum-phase condition, the optical phase $\phi_E(t)$ and the field envelope $\sqrt{I_n(t)}$ are uniquely related by the KK relation, through the Hilbert transform $\mathcal H\{\cdot\}$:
+\begin{equation}
+\phi_E(t)=\mathcal H\Big\{\tfrac12\ln I_n(t)\Big\}=\frac{1}{2\pi}\,\mathrm{P.V.}\!\int_{-\infty}^{\infty}\frac{\ln I_n(t')}{t-t'}\,dt'
+\end{equation}
+With the Fourier convention $\mathcal F\{x\}(f)=\int x(t)e^{-i2\pi ft}dt$ (as used by MATLAB \texttt{fft}), the phase reconstruction in the frequency domain is:
+\begin{equation}
+\tilde\phi_E(f)=-i\cdot\mathrm{sgn}(f)\cdot\mathcal F\Big\{\tfrac12\ln I_n(t)\Big\}
+\end{equation}
+The complex envelope is reconstructed as:
+\begin{equation}
+\hat E(t)=\sqrt{I_n(t)}\,e^{i\phi_E(t)}=\sqrt h\Big[\sqrt{P_c}+\sqrt{P_s}\,s(t)\,e^{i2\pi f_{sh}t}\Big]
+\end{equation}
+The received carrier is the time average $\hat a=\langle\hat E(t)\rangle=\sqrt{hP_c}$. It is removed, and \emph{then} the result is frequency down-shifted:
+\begin{equation}
+\hat E_s(t)=\big[\hat E(t)-\hat a\big]e^{-i2\pi f_{sh}t}=\sqrt{hP_s}\;s(t)
+\end{equation}
+The signal-signal beat current is removed exactly by this reconstruction; it does not have to be negligible. For a transmitted signal $s(t)=\sum_k a_k\,p(t-kT)$, matched filtering with $p(t)$ and sampling at symbol period $T$ gives:
+\begin{equation}
+y_k=\big(\hat E_s\ast p\big)(kT)\approx\sqrt{hP_s}\,a_k
+\end{equation}
+\begin{equation}
+\hat a_k=\arg\min_{c}\,|y_k-\sqrt{hP_s}\,c|,\qquad \text{e.g. BPSK: }\hat a_k=\mathrm{sgn}[\mathrm{Re}(y_k)]
+\end{equation}
+No carrier-phase recovery is needed, because the transmitted carrier is the phase reference.
+
+\subsection{Physical Receiver Noise Budget and Electrical SNR Model}
+
+The receiver is a PIN photodiode with thermal noise. An optional optical pre-amplifier (EDFA with fixed gain $G$, noise figure $F$ and an optical band-pass filter of width $B_f$) can be placed before it; without the pre-amplifier, $G=1$. The carrier and signal powers at the photodiode are $P_{c,d}=G\frac{\kappa}{1+\kappa}h_{PL}\,y\,P_T$ and $P_{s,d}=G\frac{1}{1+\kappa}h_{PL}\,y\,P_T$, where $y=h_{PE}$. The cross-beat electrical signal power is:
+\begin{equation}
+S(y)=2\eta^2P_{c,d}P_{s,d}=2\eta^2G^2h_{PL}^2P_T^2\,y^2\,\frac{\kappa}{(1+\kappa)^2}
+\end{equation}
+
+\emph{KK noise mapping.} Linearising eqs.~(3.7)--(3.9) for a small photocurrent noise $w$ (in W) gives the field error $\delta=\tfrac12\hat E\,\mathcal A\{w/|\hat E|^2\}$, where $\mathcal A\{x\}=x+i\mathcal H\{x\}$. For large $\kappa$ this reduces to $\delta\approx\mathcal A\{w\}/(2\sqrt{P_{c,d}})$. A photocurrent noise of one-sided power spectral density (PSD) $N_i$ [A$^2$/Hz] therefore gives a symbol SNR $g_i=S/(\zeta N_iB)$. The factor
+\[
+\zeta=1+2/\kappa
+\]
+is the second-order KK noise enhancement; it was checked by waveform simulation to within $0.1$ for $\kappa\ge12$\,dB.
+
+\emph{ASE noise.} The amplified spontaneous emission (ASE) PSD per polarisation is $S_{ASE}=h\nu(FG-1)/2$. ASE lying on both sides of the carrier beats with it into the same band, the left half appearing as an image. The ASE limit is therefore $g_{ASE}=P_{s,d}/[(1+\zeta)S_{ASE}B]$.
+
+The receiver noise power spectral densities are:
+
+\begin{itemize}
+\item \textbf{Shot Noise:} $N_{sh}=2q\eta\,(P_{c,d}+P_{s,d}+2S_{ASE}B_f)$
+\item \textbf{Front-End Thermal Noise:} $N_{th}=i_{th}^2$
+\item \textbf{Transmit-Laser Relative Intensity Noise (RIN):} $N_{rin}=\mathrm{RIN}\cdot\eta^2(P_{c,d}+P_{s,d})^2$
+\item \textbf{ASE$\times$ASE Beat (pre-amplifier, both polarisations):} $N_{aa}=4\eta^2S_{ASE}^2(B_f-B/2)$
+\end{itemize}
+
+\emph{KK reconstruction penalty.} The linear noise-mapping analysis above assumes the minimum-phase condition $\kappa>\mathrm{PAPR}_s$ holds at every instant. When $\kappa$ approaches or falls below $\mathrm{PAPR}_s$, the intensity $I_n(t)$ in eq.~(3.7) reaches near-zero values; the logarithm amplifies these events into large phase errors that are not captured by the first-order expansion. This effect is modelled as an additional inverse-SNR term whose magnitude is set by the probability that the instantaneous signal envelope violates the minimum-phase condition:
+\begin{equation}\label{eq:recon}
+\frac{1}{g_{recon}}=\mathrm{PAPR}_s\cdot P_{viol}(\kappa),\qquad P_{viol}=\begin{cases}e^{-\kappa}&\text{QPSK (complex Gaussian)}\\[4pt]\mathrm{erfc}\!\big(\!\sqrt{\kappa/2}\big)&\text{BPSK, OOK (real Gaussian)}\end{cases}
+\end{equation}
+For QPSK, the pulse-shaped baseband signal $s(t)$ is approximately circularly symmetric complex Gaussian, so $|s(t)|^2$ is exponentially distributed with unit mean; $P_{viol}=\Pr(|s|^2>\kappa)=e^{-\kappa}$. For BPSK and OOK, $s(t)$ is real-valued Gaussian, and the field crosses zero when $s<-\sqrt\kappa$; $P_{viol}=\Pr(|s|>\sqrt\kappa)=\mathrm{erfc}(\sqrt{\kappa/2})$. The factor $\mathrm{PAPR}_s$ converts the violation probability into an effective noise-to-signal ratio: each violation event produces a phase error whose energy scales with the signal's peak-to-average ratio. With $\beta=0.05$ RRC pulses, $\mathrm{PAPR}_s\approx8.8$\,dB (BPSK) and $8.5$\,dB (QPSK). At $\kappa=12$\,dB this term is negligible ($>60$\,dB for QPSK), but it rises steeply below $\kappa\approx\mathrm{PAPR}_s$ and determines the optimal CSPR.
+
+The SNR contribution of each noise is:
+\begin{equation}
+g_j(y)=\frac{S(y)}{\zeta\,N_j\,B}\quad(j=sh,th,rin,aa),\qquad g_{ASE}(y)=\frac{P_{s,d}}{(1+\zeta)S_{ASE}B}
+\end{equation}
+The independent noise powers add, so the total average electrical SNR as a function of the pointing fraction $y$ is:
+\begin{equation}
+g(y)=\bigg(\sum_j\frac{1}{g_j(y)}+\frac{1}{g_{recon}}\bigg)^{\!-1}
+\end{equation}
+where the sum runs over $j\in\{sh,th,rin,ASE,aa\}$ (the last two only with the pre-amplifier) and $g_{recon}$ is the reconstruction penalty of eq.~(\ref{eq:recon}).
+
+Without the pre-amplifier, the thermal term scales as $y^{-2}$, because the carrier arrives as weak as the data and the receiver has no local-oscillator gain. With the pre-amplifier, the ASE term ($\propto y^{-1}$) dominates.
+
+The CSPR enters the photocurrent-noise terms as $\kappa/(1+\kappa)^2$ and the ASE term as $1/(1+\kappa)$. Meanwhile, $g_{recon}$ depends \emph{only} on $\kappa$ (not on $y$). This creates two competing effects as $\kappa$ is varied:
+\begin{itemize}
+\item \emph{Low $\kappa$}: the reconstruction penalty dominates ($1/g_{recon}$ grows exponentially), and phase retrieval breaks down.
+\item \emph{High $\kappa$}: more power goes to the carrier, reducing $P_s$ and raising $1/g_{ASE}$; the signal power penalty dominates.
+\end{itemize}
+The ergodic rate $R_{KK}(\kappa)$ is therefore a bell curve with a maximum at an intermediate $\kappa^\star$. The optimal CSPR depends on the modulation format and the link budget; for the default parameters in Table~3.1, $\kappa^\star\approx9$--$10$\,dB for QPSK.
+
+\subsection{Pointing Error Statistics and Fading Distribution}
+
+For a Gaussian optical beam with waist $w_0$ at frequency $f=c/\lambda$, the relevant quantities are:
+\begin{itemize}
+\item beam radius at distance $z$: $w_z=z\tan\!\big(\tfrac{c}{\pi fw_0}\big)$;
+\item peak collected power fraction: $A_0=\frac{2w_d^2}{w_z^2}$;
+\item distance-dependent pointing jitter variance: $\sigma_s^2(z)=\sigma_{s0}^2\exp\!\big(\tfrac{2k_0z}{d_0}\big)$.
+\end{itemize}
+The pointing shape parameter $\alpha$ is:
+\begin{equation}
+\alpha=\frac{w_z^2}{4\sigma_s^2}
+\end{equation}
+The radial pointing deviation is Rayleigh distributed. The pointing loss fraction $y\in(0,A_0]$ then follows a power-law probability density function (PDF) and cumulative distribution function (CDF):
+\begin{equation}
+f_Y(y)=\frac{\alpha}{A_0^\alpha}y^{\alpha-1},\qquad F_Y(y)=\Big(\frac{y}{A_0}\Big)^{\alpha},\qquad 0<y\le A_0
+\end{equation}
+
+\subsection{Achievable Data Rate Integration}
+
+The hard-decision information rate per symbol $m_i(g)$ [bits/symbol] as a function of SNR $g=E_s/N_0$ is formulated using the binary entropy:
+\begin{equation}
+H_2(p)=-p\log_2(p)-(1-p)\log_2(1-p)
+\end{equation}
+\begin{itemize}
+\item \textbf{BPSK (1 bit/symbol):} $m_{BPSK}(g)=1\cdot\big[1-H_2\big(Q(\sqrt{2g})\big)\big]$
+\item \textbf{OOK (1 bit/symbol):} $m_{OOK}(g)=1\cdot\big[1-H_2\big(Q(\sqrt{g})\big)\big]$. OOK is BPSK at $g/2$, because half of its energy is a data-free tone.
+\item \textbf{QPSK (2 bits/symbol):} $m_{QPSK}(g)=2\cdot\big[1-H_2\big(Q(\sqrt{g})\big)\big]$
+\end{itemize}
+where $Q(x)=\frac12\mathrm{erfc}\big(x/\sqrt2\big)$.
+
+The soft-decision rates are evaluated by Gauss--Hermite quadrature. For BPSK,
+\[
+m^{s}_{BPSK}(g)=1-\mathbb E_z\log_2\!\big(1+e^{-4g(1+z/\sqrt{2g})}\big),\qquad z\sim\mathcal N(0,1),
+\]
+and $m^s_{OOK}(g)=m^s_{BPSK}(g/2)$, $m^s_{QPSK}(g)=2m^s_{BPSK}(g/2)$. These are upper bounds on the hard-decision rates.
+
+Integrating over the pointing fading distribution gives the ergodic achievable rate $R_{KK}$ [bits/s]:
+\begin{equation}
+R_{KK}=\int_{0}^{A_0}B\cdot m_i\big(g(y)\big)\,f_Y(y)\,dy
+\end{equation}
+No detector threshold is imposed; the rate falls off through $g(y)$ itself. If a tracking threshold power $p_{th}$ is to be modelled, the lower limit becomes $y_{th}=p_{th}/(h_{PL}P_T)$, which is dimensionless. Applying the logarithmic change of variable $t=\ln y$ ($y=e^t$, $dy=e^tdt$) yields the exact computational form:
+\begin{equation}
+R_{KK}=B\int_{-\infty}^{\ln A_0}m_i\big(g(e^t)\big)\cdot\alpha\exp\big(\alpha(t-\ln A_0)\big)\,dt
+\end{equation}
+
+Pointing jitter is slow compared with a codeword, so the rate guaranteed for all but a fraction $\epsilon$ of the time is also reported. It follows in closed form from $F_Y$:
+\begin{equation}
+R_\epsilon=B\cdot m_i\big(g(A_0\,\epsilon^{1/\alpha})\big)
+\end{equation}
+The receiver sensitivity is the received power at which the BER reaches the 7\,\% hard-decision forward error correction (FEC) threshold of $3.8\times10^{-3}$. This requires $g^\star=5.5$\,dB for BPSK and $8.5$\,dB for QPSK and OOK.
+
+\section{Simulation and Results}
+
+\begin{table}[h]
+\centering
+\caption{DEFAULT PARAMETERS SETUP II}
+\begin{tabular}{|l|l|l|}
+\hline
+\textbf{Parameter} & \textbf{Value} & \textbf{Description}\\\hline
+$w_0$ & 0.1\,m & beam waist at TX\\\hline
+$w_d$ & 0.07\,m & detector radius ($\approx30\,\%$ below beam waist)\\\hline
+$f_{default}$ & 195.94\,THz (1530\,nm) & default frequency (ITU-T C-band short edge)\\\hline
+$h_{PL}$ & 0.9 & deterministic path loss\\\hline
+$\eta$ & 0.5\,A/W & detector responsivity\\\hline
+$P_{T,default}$ & 0.3\,W & total transmit power (carrier + signal)\\\hline
+$\kappa$ & 12\,dB & CSPR at transmitter\\\hline
+$B$ & 10\,GHz & symbol rate / bandwidth (RRC, $\beta=0.05$)\\\hline
+$i_{th}$ & 20\,pA/$\sqrt{\text{Hz}}$ & thermal noise current density\\\hline
+RIN & $-150$\,dB/Hz & transmit-laser RIN\\\hline
+$G$, $F$, $B_f$ & 15\,dB, 5\,dB, 30\,GHz & pre-amplifier gain, noise figure, optical filter\\\hline
+$z$ & 1000\,km & link distance\\\hline
+$\sigma_{S0};k_0;d_0$ & 2; 0.1; 100e3 & $\sigma_s$ model, paper given values\\\hline
+\end{tabular}
+\end{table}
+
+\begin{table}[h]
+\centering
+\caption{Noise Budget at $y=A_0$ ($A_0=4.132\times10^{-4}$, $w_z=4.870$\,m, $\alpha=0.201$)}
+\begin{tabular}{|l|l|}
+\hline
+Received power (carrier / signal) & $-9.52$\,dBm ($-9.79$ / $-21.79$\,dBm)\\\hline
+KK noise factor $\zeta$ & 1.126\\\hline
+SNR (shot only) & 47.4\,dB\\\hline
+SNR (thermal only) & 48.9\,dB\\\hline
+SNR (RIN only) & 40.0\,dB\\\hline
+SNR (signal/carrier--ASE only) & 31.9\,dB\\\hline
+SNR (ASE$\times$ASE only) & 74.8\,dB\\\hline
+SNR (reconstruction, QPSK) & 61.8\,dB (negligible at $\kappa\!=\!12$\,dB)\\\hline
+SNR (total, on-axis, pre-amp) & 31.1\,dB\\\hline
+SNR (total, photodiode only, no pre-amp) & 18.6\,dB\\\hline
+Sensitivity BPSK / QPSK (pre-amp) & $-30.4$ / $-28.6$\,dBm\\\hline
+\end{tabular}
+\end{table}
+
+\paragraph{Worked check of Table 3.2.} At $y=A_0$ the received power is $h_{PL}P_TA_0=0.9\times0.3\times4.132\times10^{-4}=1.116\times10^{-4}$\,W, i.e.\ $-9.52$\,dBm. Of this, $\kappa/(1+\kappa)=0.941$ is carrier. With the photodiode alone:
+\begin{itemize}
+\item cross-beat signal power: $S=2(0.5)^2(1.050\times10^{-4})(6.624\times10^{-6})=3.478\times10^{-10}$\,A$^2$;
+\item thermal noise power: $\zeta i_{th}^2B=1.126\times4\times10^{-22}\times10^{10}=4.50\times10^{-12}$\,A$^2$;
+\item ratio: $77.2$, i.e.\ $18.9$\,dB.
+\end{itemize}
+With the 15\,dB pre-amplifier the thermal SNR rises by $2\times15$\,dB to $48.9$\,dB, and the receiver becomes ASE limited ($31.9$\,dB).
+
+\begin{figure}[h]
+\centering\includegraphics[width=0.85\textwidth]{figs/fig31.pdf}
+\caption{BPSK Data Rate vs frequency}
+\end{figure}
+
+\begin{figure}[h]
+\centering\includegraphics[width=0.85\textwidth]{figs/fig32.pdf}
+\caption{QPSK Data Rate vs frequency}
+\end{figure}
+
+\begin{figure}[h]
+\centering\includegraphics[width=0.85\textwidth]{figs/fig33.pdf}
+\caption{Data Rate vs SNR (solid: hard decision, dashed: soft decision)}
+\end{figure}
+
+\begin{figure}[h]
+\centering\includegraphics[width=\textwidth]{figs/fig34.pdf}
+\caption{SNR contributions vs pointing fraction $y$ (QPSK, $\kappa=12$\,dB)}
+\end{figure}
+
+\begin{figure}[h]
+\centering\includegraphics[width=\textwidth]{figs/fig35.pdf}
+\caption{Monte Carlo validation: (a) pointing-loss CDF from $2\times10^5$ Rayleigh samples; (b) end-to-end KK waveform simulation ($2^{13}$ symbols per point) vs analytic $g(y)$}
+\end{figure}
+
+\paragraph{Ergodic rates.} At 195.94\,THz (1530\,nm) and $P_T=0.3$\,W, with the pre-amplifier, the ergodic rates are:
+\begin{itemize}
+\item BPSK: $6.84$\,Gbps (hard decision) / $6.96$\,Gbps (soft decision);
+\item OOK: $6.59$ / $6.72$\,Gbps;
+\item QPSK: $13.18$ / $13.44$\,Gbps.
+\end{itemize}
+Without the pre-amplifier they fall to $3.80$ (BPSK) and $6.70$\,Gbps (QPSK, hard decision).
+
+\paragraph{Monte Carlo validation.} Averaging $B\,m(g(y))$ over the $2\times10^5$ channel samples gives $13.16$\,Gbps for QPSK, matching the integral ($13.18$\,Gbps). The end-to-end waveform simulation (RRC pulses, carrier plus SSB signal, ASE in both polarisations, square-law photodiode with shot, thermal and RIN noise, KK DSP and matched filter) agrees with the analytic $g(y)$ to within $0.2$\,dB between $y=A_0$ and $y=0.01A_0$.
+
+For the photodiode-only receiver at low SNR, the photocurrent noise approaches the carrier level. The KK logarithm then amplifies it, and the analytic rate becomes an upper bound. This can be checked with the waveform Monte Carlo by setting \texttt{pre\_on=false}.
+
+\paragraph{CSPR optimisation.} With the reconstruction penalty included, the ergodic rate is no longer monotonically decreasing in $\kappa$. At low CSPR the reconstruction penalty dominates; at high CSPR the signal power loss dominates. The result is a bell-shaped $R_{KK}(\kappa)$ whose peak defines the optimal CSPR $\kappa^\star$. Setting \texttt{RUN.cspr = true} in the MATLAB script sweeps $\kappa$ from 0 to 20\,dB and plots the bell curve for each modulation format. The peak for QPSK with the default parameters falls near $\kappa^\star\approx9$--$10$\,dB. The vertical dashed lines on the plot mark the PAPR threshold for each modulation: below this threshold, minimum-phase violations are frequent and the rate drops sharply.
+
+\paragraph{Outage.} The $\epsilon$-outage rate is effectively zero for $\epsilon=0.1$ ($R_{0.1}\approx7.6\times10^{-5}$\,Gbps). Under the jitter model, $\sigma_s=5.44$\,m exceeds the beam radius $w_z=4.87$\,m at 1000\,km, so $\alpha=0.20$. With the smaller detector radius $w_d=0.07$\,m, $A_0=4.13\times10^{-4}$ and the link spends 41\,\% of the time below the QPSK sensitivity even with the pre-amplifier. Pointing jitter, not the KK receiver, limits reliability.
+
+\subsection{Constellation Analysis: Carrier Placement Configurations}
+
+To demonstrate \emph{why} the carrier must co-propagate with the data, four carrier/LO configurations are simulated at $y=A_0$ for QPSK with $2^{13}$ symbols:
+
+\begin{itemize}
+\item \textbf{A2 (TX Carrier):} The standard configuration used throughout this chapter. The carrier co-propagates with the signal through the channel, undergoes the same fading and phase rotation, and arrives at the photodiode in phase with the data.
+
+\item \textbf{B1 (RX Optical LO):} The transmitter sends only the SSB data signal at full power. A local CW laser at the receiver is combined optically with the incoming signal \emph{before} the photodiode. This restores the carrier--signal structure needed for KK phase retrieval.
+
+\item \textbf{A1/B3 (No Carrier):} The signal is transmitted and received alone, with no carrier from either end. The KK algorithm attempts phase retrieval from an intensity that does not satisfy the minimum-phase condition.
+
+\item \textbf{B2 (Post-KK LO):} The signal is received without a carrier; KK phase retrieval runs on the carrier-less photocurrent; a data-aided phase rotation is applied \emph{after} reconstruction to see if the LO reference can recover lost phase information.
+\end{itemize}
+
+\begin{figure}[h]
+\centering\includegraphics[width=\textwidth]{figs/fig36.pdf}
+\caption{QPSK constellation diagrams for the four carrier/LO configurations at $y=A_0$. Only A2 (TX carrier) and B1 (RX optical LO) produce recognisable constellations; A1/B3 and B2 show that KK phase retrieval fails without a carrier at the photodiode input.}
+\end{figure}
+
+\begin{figure}[h]
+\centering\includegraphics[width=\textwidth]{figs/fig37.pdf}
+\caption{Phase error distributions for the four configurations. A2 and B1 show concentrated distributions ($\sigma_\phi<0.06$\,rad); A1/B3 and B2 show phase errors spread uniformly over $[-\pi,\pi]$.}
+\end{figure}
+
+Configurations A2 and B1 both produce clean QPSK constellations with SNR above 30\,dB, confirming that KK phase retrieval works whenever a carrier is present at the photodiode input---whether it arrived through the channel (A2) or was added locally (B1). Configurations A1/B3 and B2 fail completely: the constellation collapses to a noise cloud and the BER approaches 0.5. The physical reason is that square-law detection $I=\eta|E|^2$ destroys optical phase irreversibly; the Hilbert-transform relation (eq.~3.7) holds only when the field is minimum-phase, which requires a dominant carrier tone. No amount of post-processing (B2) can recover phase information that was never encoded in the photocurrent.
+
+\subsection{Detector Radius Sensitivity}
+
+The detector radius $w_d$ appears in the peak collected fraction $A_0=2w_d^2/w_z^2$ and therefore directly controls the on-axis received power. The professor's guidance sets $w_d$ at 20--50\,\% below the beam waist $w_z$, motivating a sweep from 0.04\,m to 0.10\,m. The ergodic QPSK rate rises from 11.46\,Gbps at $w_d=0.04$\,m to 14.09\,Gbps at $w_d=0.10$\,m; the default $w_d=0.07$\,m gives 13.18\,Gbps, which is approximately 94\,\% of the maximum achievable rate.
+
+\begin{figure}[h]
+\centering\includegraphics[width=0.85\textwidth]{figs/fig38.pdf}
+\caption{Ergodic rate vs detector radius $w_d$ for all three modulation formats. Vertical dashed line: default $w_d=0.07$\,m. The rate increases monotonically with $w_d$ but with diminishing returns above $w_d\approx0.08$\,m.}
+\end{figure}
+
+\subsection{ITU-T C-Band Wavelength Comparison}
+
+The ITU-T C-band spans 1530--1565\,nm (191.56--195.94\,THz). At the long-wavelength edge (1565\,nm) the beam divergence is slightly larger ($w_z=4.98$\,m vs 4.87\,m), which reduces $A_0$ from $4.13\times10^{-4}$ to $3.95\times10^{-4}$. However, the pointing shape parameter $\alpha$ increases from 0.201 to 0.210, which means the fading distribution is slightly less severe. These two effects approximately cancel: the ergodic QPSK rate changes from 13.18\,Gbps (1530\,nm) to 13.45\,Gbps (1565\,nm), a difference of only 2\,\%.
+
+\begin{figure}[h]
+\centering\includegraphics[width=0.85\textwidth]{figs/fig39.pdf}
+\caption{Ergodic rate vs transmit power $P_T$ at the two ITU-T C-band edges: 1530\,nm and 1565\,nm. The 1565\,nm curve is slightly higher due to the more favourable $\alpha$ despite lower $A_0$. The difference is $<2\,\%$ across the power range.}
+\end{figure}
+
+\section{Rationale: Transmitter-Side Carrier vs Receiver-Side Local Oscillator}
+
+Kramers--Kronig receivers were originally proposed for fibre-optic links, where the CW carrier can be placed either at the transmitter (co-propagating with the data) or at the receiver (as a local oscillator, LO). Both configurations recover the full optical field from a single photodiode, but they differ sharply in what the receiver must provide. This section compares the two options for the inter-satellite link scenario and motivates the choice of a transmitter-side carrier used throughout this chapter.
+
+\subsection{Receiver-Side LO}
+
+In the receiver-LO configuration the transmitter sends only the SSB data signal at full power $P_T$. The receiver mixes the incoming signal with a locally generated CW laser before the photodiode. The LO power can be chosen freely and made large, so the cross-beat current is proportional to $\sqrt{P_{LO}P_s}$ with an arbitrarily strong $P_{LO}$. This gives the architecture several advantages:
+
+\begin{itemize}
+\item \textbf{No CSPR penalty.} The full transmit power carries data; there is no power budget split between carrier and signal.
+\item \textbf{Shot-noise-limited sensitivity.} A strong LO lifts the beat current well above thermal noise, approaching coherent-receiver performance from a single photodiode.
+\item \textbf{No minimum-phase constraint.} The carrier power is set at the receiver and can always be made large enough; the PAPR of the transmitted signal is irrelevant to phase reconstruction.
+\end{itemize}
+
+However, in a free-space inter-satellite link these advantages come at significant cost:
+
+\begin{itemize}
+\item \textbf{Frequency locking.} The LO laser must be offset-locked to the transmitter laser to within a fraction of $B$. Two independent lasers on different spacecraft, each subject to mechanical vibration and thermal drift, require either an optical phase-locked loop (OPLL) or a digital frequency-offset estimator with $\ge$10-bit ADC and real-time DSP.
+
+\item \textbf{Doppler compensation.} For a 550\,km LEO constellation the carrier Doppler shift can reach $\pm9.9$\,GHz. The LO must track this shift in real time, which demands a widely tunable laser or an acousto-optic frequency shifter, adding mass, power and complexity.
+
+\item \textbf{Phase noise.} The transmitter and receiver lasers have independent phase-noise processes. The beat signal carries their sum, which must be tracked by carrier-phase recovery DSP. For linewidths above $\sim100$\,kHz the cycle-slip rate becomes significant at the symbol rates considered here.
+
+\item \textbf{Polarisation.} The received field arrives in an arbitrary and time-varying polarisation state (due to spacecraft rotation and optical-bench flexure). A single photodiode with LO mixing sees only the projection onto the LO's polarisation; recovering the full signal requires a polarisation-diversity receiver (two photodiodes, a polarisation beam splitter and Stokes-parameter tracking), roughly doubling the front-end hardware.
+\end{itemize}
+
+\subsection{Transmitter-Side Carrier}
+
+In the transmitter-carrier configuration the CW tone is generated from the \emph{same laser} as the data signal and is transmitted in the same spatial mode, same polarisation and same beam. At the receiver, a single photodiode performs square-law detection; the KK algorithm recovers the optical field entirely in digital signal processing.
+
+Because the carrier and data share the same laser and propagation path:
+
+\begin{itemize}
+\item \textbf{Phase noise cancels.} The laser phase $\theta_L(t)$ is common to the carrier and the signal. In the photocurrent $I(t)=\eta|E_{Rx}|^2$, the phase drops out. No carrier-phase recovery is needed.
+
+\item \textbf{Doppler cancels.} The Doppler shift $\phi_D(t)$ affects the carrier and the signal identically. The cross-beat current sees only the difference, which is the fixed SSB offset $f_{sh}$. No Doppler tracking or tunable laser is required.
+
+\item \textbf{Polarisation cancels.} Whatever polarisation rotation the channel imposes acts on the carrier and signal equally. The photocurrent is insensitive to the absolute polarisation state. A single photodiode suffices.
+
+\item \textbf{No LO laser.} The receiver is simply a photodiode (optionally preceded by an EDFA) followed by an ADC and DSP. There is no second laser, no frequency-locking loop, no polarisation optics.
+\end{itemize}
+
+The price is the CSPR power penalty. At $\kappa=12$\,dB, only $P_s/P_T=1/(1+\kappa)\approx6\,\%$ of the transmit power carries information; the rest is spent on the carrier. Additionally, the minimum-phase condition $\kappa>\mathrm{PAPR}_s$ imposes a floor on the CSPR, limiting the amount of power that can be shifted from carrier to data.
+
+\subsection{Trade-off Summary}
+
+\begin{table}[h]
+\centering
+\caption{Comparison of transmitter-side carrier and receiver-side LO for OISL}
+\begin{tabular}{|p{4.0cm}|p{5.0cm}|p{5.0cm}|}
+\hline
+\textbf{Attribute} & \textbf{TX-side carrier} & \textbf{RX-side LO}\\\hline
+Frequency locking & Not needed & Required (OPLL or DSP)\\\hline
+Doppler tracking & Not needed & $\pm9.9$\,GHz tuning for LEO\\\hline
+Phase-noise tolerance & Immune (common path) & Limited by combined linewidth\\\hline
+Polarisation control & Not needed & Diversity receiver or tracking\\\hline
+Receiver hardware & Photodiode + EDFA + ADC & Photodiode + tunable laser + PBS + 2 ADCs\\\hline
+Transmit power efficiency & $1/(1+\kappa)\approx6\,\%$ at 12\,dB & 100\,\% (no carrier overhead)\\\hline
+Sensitivity (pre-amp) & ASE limited ($-28.6$\,dBm QPSK) & Near shot-noise limited\\\hline
+Min-phase constraint & $\kappa>\mathrm{PAPR}_s$ required & None\\\hline
+DSP complexity & KK: $\ln$, Hilbert, matched filter & Freq.\ offset + phase recovery + pol.\ demux\\\hline
+\end{tabular}
+\end{table}
+
+For a mass- and power-constrained satellite terminal, the transmitter-side carrier trades 6--10\,dB of transmit power for the complete elimination of the LO laser, frequency-locking loop, polarisation optics and Doppler-tracking hardware. The resulting receiver is a single photodiode with digital back-end, which is the simplest coherent-capable architecture possible. The CSPR power penalty is partially recovered by the pre-amplifier (which boosts carrier and signal equally) and by operating near the optimal $\kappa^\star$ identified by the reconstruction penalty model. In constellations where the link budget has margin (e.g.\ short LEO--LEO links with $<2000$\,km range), the power penalty is acceptable and the hardware simplification is decisive.

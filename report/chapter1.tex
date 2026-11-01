@@ -1,0 +1,45 @@
+\chapter{Introduction}
+
+\section{Motivation}
+
+The deployment of large low-Earth orbit (LEO) satellite constellations by commercial operators has renewed interest in high-capacity optical inter-satellite links (OISLs). Unlike radio-frequency cross-links, free-space optical (FSO) links offer licence-free operation, narrow beam divergence and data rates on the order of tens of gigabits per second~\cite{kaushal2017}. These properties make FSO the preferred backhaul technology for mega-constellations that must relay traffic between orbital planes with minimal latency.
+
+Conventional coherent fibre-optic receivers recover the full complex optical field, but they require a local oscillator (LO) laser that must be frequency-locked to the transmitter, track Doppler shifts, and match the polarisation state of the incoming signal. For a satellite terminal operating in a 550\,km LEO shell, the carrier Doppler shift between two spacecraft in different planes can reach $\pm9.9$\,GHz; the LO must follow this shift in real time while maintaining phase coherence at symbol rates of 10\,GBaud or higher. The hardware burden---a tunable LO laser, a polarisation-diversity front end, and the associated control loops---adds mass, power consumption and cost to every spacecraft.
+
+The Kramers--Kronig (KK) self-coherent receiver, first proposed by Mecozzi, Antonelli and Shtaif~\cite{mecozzi2016}, offers an alternative. By transmitting a continuous-wave (CW) carrier alongside the single-sideband (SSB) data signal and requiring only a single photodiode, it recovers the optical field entirely in digital signal processing (DSP). When the carrier is placed at the \emph{transmitter}, it co-propagates with the data through the same laser, the same spatial mode and the same polarisation. At the receiver, square-law detection causes the common laser phase noise, Doppler shift and polarisation rotation to cancel automatically. The resulting receiver is a photodiode (optionally preceded by an erbium-doped fibre amplifier, EDFA) followed by an analogue-to-digital converter and a DSP chain: the simplest coherent-capable architecture possible for an OISL terminal.
+
+\section{Scope and Objectives}
+
+This study report develops an end-to-end analytical model of a KK-OISL link with a transmitter-side carrier, derives the achievable data rates under realistic pointing-error fading, and validates the model through Monte Carlo simulation. The specific objectives are:
+
+\begin{enumerate}
+\item Formulate the optical field model for a KK-OISL transmitter and receiver, including the carrier--signal power split (CSPR), single-sideband modulation and the minimum-phase condition.
+
+\item Derive the electrical signal-to-noise ratio (SNR) at the receiver output, accounting for six physical noise sources: shot noise, thermal noise, laser relative intensity noise (RIN), signal--ASE beat noise, ASE$\times$ASE beat noise, and a KK reconstruction penalty that models the effect of minimum-phase violations.
+
+\item Integrate the SNR model over the pointing-error fading distribution to obtain ergodic and outage data rates for BPSK, OOK and QPSK modulation formats.
+
+\item Validate the analytical model against two levels of Monte Carlo simulation: a channel-level simulation that samples the pointing fading, and a waveform-level simulation that generates pulse-shaped symbols, adds all physical noise sources, runs the full KK DSP chain, and measures the output SNR and bit-error rate.
+
+\item Investigate the effect of carrier/LO placement by simulating four configurations and showing that KK phase retrieval fails without a carrier at the photodiode input.
+
+\item Package the model as a self-contained MATLAB function suitable for co-simulation with commercial optical link-design tools such as OptiSystem.
+\end{enumerate}
+
+\section{Contributions}
+
+The main contributions of this work are:
+
+\begin{itemize}
+\item A closed-form KK reconstruction penalty (eq.~\ref{eq:recon} in Chapter~3) that models the minimum-phase violation probability as a function of CSPR and modulation format, producing the physically expected bell-shaped rate--CSPR curve without resorting to arbitrary impairment penalties.
+
+\item A constellation-level comparison of four carrier/LO configurations (transmitter carrier, receiver-side optical LO, no carrier, and post-KK LO) with a clear physical explanation of why the last two fail: square-law detection destroys optical phase irreversibly, and the KK Hilbert-transform relation holds only when the field is minimum-phase.
+
+\item A parametric study of detector aperture radius (0.04--0.10\,m) and ITU-T C-band wavelength (1530 and 1565\,nm), demonstrating that the default detector radius of 0.07\,m achieves approximately 94\,\% of the maximum possible rate, and that the rate varies by less than 2\,\% across the C-band.
+
+\item A self-contained, cross-validated simulation package (MATLAB + Python mirror) with zero external dependencies, suitable for reproducible analysis and OptiSystem integration.
+\end{itemize}
+
+\section{Report Organisation}
+
+The remainder of this report is organised as follows. Chapter~2 reviews the relevant background: free-space optical channel models, pointing-error statistics and the Kramers--Kronig receiver. Chapter~3 presents the mathematical derivation of the KK-OISL model, the simulation results, and the rationale for the transmitter-side carrier. Chapter~4 summarises the findings and identifies directions for future work.

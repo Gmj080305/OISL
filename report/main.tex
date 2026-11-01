@@ -1,0 +1,45 @@
+\documentclass[12pt,a4paper]{report}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{mathptmx}
+\usepackage{amsmath,amssymb,graphicx,fancyhdr,enumitem}
+\pagestyle{fancy}\fancyhf{}\fancyhead[R]{\itshape OISL -- KK Receiver Analysis}\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\thetable}{\thechapter.\arabic{table}}
+\renewcommand{\thefigure}{\thechapter.\arabic{figure}}
+\renewcommand{\theequation}{\thechapter.\arabic{equation}}
+
+\begin{document}
+
+% --- Title Page ---
+\begin{titlepage}
+\centering
+\vspace*{2cm}
+{\Large\bfseries Birla Institute of Technology \& Science, Pilani}\\[0.3cm]
+{\large Hyderabad Campus}\\[2cm]
+{\LARGE\bfseries ECE F266 --- Study Report}\\[1.5cm]
+{\Huge\bfseries Optical Inter-Satellite Link\\[0.3cm]Channel Simulation \& Rate Analysis}\\[0.5cm]
+{\Large\itshape Kramers--Kronig Self-Coherent Receiver\\with Transmitter-Side Carrier}\\[3cm]
+{\large October 2026}\\
+\vfill
+\end{titlepage}
+
+% --- Table of Contents ---
+\tableofcontents
+\newpage
+
+% --- Chapters ---
+\input{chapter1.tex}
+\input{chapter2.tex}
+\input{chapter3.tex}
+\input{chapter4.tex}
+
+% --- Bibliography ---
+\begin{thebibliography}{9}
+\bibitem{mecozzi2016} A.~Mecozzi, C.~Antonelli, and M.~Shtaif, ``Kramers--Kronig coherent receiver,'' \emph{Optica}, vol.~3, no.~11, pp.~1220--1227, 2016.
+
+\bibitem{shang2025} B.~Shang, S.~Zhang, and Z.~J.~Wong, ``Channel modeling and rate analysis of optical inter-satellite link (OISL),'' \emph{IEEE Trans. Veh. Technol.}, vol.~74, no.~7, pp.~11650--11655, 2025.
+
+\bibitem{kaushal2017} H.~Kaushal and G.~Kaddoum, ``Optical communication in space: Challenges and mitigation techniques,'' \emph{IEEE Commun. Surveys Tuts.}, vol.~19, no.~1, pp.~57--96, 2017.
+\end{thebibliography}
+
+\end{document}

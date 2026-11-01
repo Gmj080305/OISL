@@ -1,0 +1,48 @@
+\chapter{Conclusion and Future Work}
+
+\section{Summary of Findings}
+
+This report presented an end-to-end analytical model for an optical inter-satellite link (OISL) using a Kramers--Kronig (KK) self-coherent receiver with a transmitter-side carrier. The key findings are:
+
+\begin{enumerate}
+\item \textbf{Achievable rates.} At a link distance of 1000\,km, transmit power $P_T=0.3$\,W and ITU-T C-band wavelength 1530\,nm, the ergodic QPSK rate is 13.18\,Gbps (hard decision) and 13.44\,Gbps (soft decision) with an EDFA pre-amplifier. Without the pre-amplifier the rate drops to 6.70\,Gbps, because the receiver becomes thermal-noise limited rather than ASE limited.
+
+\item \textbf{Reconstruction penalty and CSPR optimisation.} The KK reconstruction penalty, modelled as $1/g_{recon}=\mathrm{PAPR}_s\cdot P_{viol}(\kappa)$, produces a bell-shaped rate-vs-CSPR curve. At the design CSPR of 12\,dB the penalty is negligible ($>60$\,dB for QPSK), but it rises steeply below $\kappa\approx\mathrm{PAPR}_s$ and determines the optimal CSPR of $\kappa^\star\approx9$--$10$\,dB. This provides a principled method for selecting the CSPR rather than relying on rules of thumb.
+
+\item \textbf{Carrier placement.} The constellation-level comparison of four carrier/LO configurations confirmed that KK phase retrieval requires a carrier at the photodiode input. Configurations without a carrier (A1/B3 and B2) fail because square-law detection destroys optical phase irreversibly; the Hilbert-transform relation holds only when the field is minimum-phase. The transmitter-side carrier (A2) and receiver-side optical LO (B1) both produce clean constellations, but only the transmitter-side carrier cancels Doppler, phase noise and polarisation rotation without additional hardware.
+
+\item \textbf{Detector radius.} The ergodic QPSK rate increases from 11.46\,Gbps at $w_d=0.04$\,m to 14.09\,Gbps at $w_d=0.10$\,m. The default $w_d=0.07$\,m (approximately 30\,\% below the beam waist) achieves 94\,\% of the maximum rate, a practical trade-off between aperture size and link margin.
+
+\item \textbf{ITU-T C-band.} The rate varies by less than 2\,\% between 1530 and 1565\,nm. Slightly higher beam divergence at 1565\,nm is compensated by a more favourable pointing shape parameter $\alpha$, so the system operates essentially flat across the C-band.
+
+\item \textbf{Reliability.} Under the jitter model of Shang \emph{et al.}, the pointing jitter $\sigma_s=5.44$\,m exceeds the beam radius $w_z=4.87$\,m at 1000\,km, yielding $\alpha=0.20$. The link spends 41\,\% of the time below the QPSK sensitivity even with the pre-amplifier. Pointing jitter, not the KK receiver architecture, is the reliability bottleneck.
+
+\item \textbf{Monte Carlo validation.} Channel-level Monte Carlo (200\,000 samples) matched the ergodic rate integral to within 0.02\,Gbps. Waveform-level Monte Carlo (full KK DSP with pulse shaping, ASE, shot, thermal and RIN noise) agreed with the analytical SNR model to within 0.2\,dB across the tested range of fading states.
+\end{enumerate}
+
+\section{Limitations}
+
+The model makes several simplifying assumptions:
+\begin{itemize}
+\item The pointing error is two-axis Rayleigh with a parametric jitter model. Measured pointing statistics from operational spacecraft may differ.
+\item The EDFA gain is treated as fixed and noiseless apart from ASE. Gain saturation and transient effects under fading are not modelled.
+\item Atmospheric effects are absent (vacuum propagation). For links involving a ground station, turbulence-induced scintillation and beam wander would need to be added.
+\item Only single-carrier modulation is considered. Wavelength-division multiplexing (WDM) with multiple KK channels could increase aggregate throughput.
+\item The reconstruction penalty model uses the Gaussian approximation for the signal envelope. At very low CSPR (below PAPR), the actual penalty may differ.
+\end{itemize}
+
+\section{Future Work}
+
+Several extensions would strengthen the model and bring it closer to a system-level design tool:
+
+\begin{enumerate}
+\item \textbf{OptiSystem co-simulation.} The self-contained MATLAB function \texttt{oisl\_kk\_channel.m} is ready for integration with OptiSystem's MATLAB co-simulation interface. A logical next step is to run the waveform-level simulation inside OptiSystem's signal-processing framework, connecting the analytical pointing-error model to OptiSystem's FSO channel module.
+
+\item \textbf{Higher-order modulation.} The model supports BPSK, OOK and QPSK. Extending to 16-QAM would test the limits of the KK approach at higher spectral efficiencies, where the reconstruction penalty grows steeper.
+
+\item \textbf{Adaptive CSPR.} The optimal CSPR depends on the link budget (and therefore on range and pointing state). An adaptive scheme that adjusts the CSPR at the transmitter based on a feedback channel could improve the average throughput.
+
+\item \textbf{Multi-link scenarios.} In a constellation with relay hops, the end-to-end rate depends on the weakest link. Extending the model to a multi-hop OISL network with heterogeneous ranges and pointing conditions would be valuable for constellation design.
+
+\item \textbf{Experimental validation.} A benchtop demonstration of the transmitter-side-carrier KK receiver at 10\,GBaud, even without the free-space channel, would validate the noise model and the reconstruction penalty against measured data.
+\end{enumerate}

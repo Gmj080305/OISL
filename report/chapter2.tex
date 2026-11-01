@@ -1,0 +1,102 @@
+\chapter{Background and Literature Review}
+
+This chapter reviews the three bodies of work on which the present model is built: free-space optical link budgets and pointing-error statistics, self-coherent receivers based on the Kramers--Kronig relation, and the particular challenges of applying coherent detection to inter-satellite links.
+
+\section{Free-Space Optical Channel}
+
+\subsection{Link Geometry and Deterministic Loss}
+
+A Gaussian laser beam of waist $w_0$ and wavelength $\lambda=c/f$ diverges in the far field with a half-angle $\theta=\lambda/(\pi w_0)$. At a propagation distance $z$ the beam radius is~\cite{kaushal2017}:
+\begin{equation}
+w_z=z\tan\!\Big(\frac{\lambda}{\pi w_0}\Big)\approx\frac{z\lambda}{\pi w_0}
+\end{equation}
+A circular receive aperture of radius $w_d$ centred on the beam axis collects a fraction
+\begin{equation}
+A_0=\frac{2w_d^2}{w_z^2}
+\end{equation}
+of the total transmitted power, where the approximation assumes a Gaussian intensity profile at the receiver. The maximum received power in the absence of pointing error is therefore $P_{rx,\max}=h_{PL}\,A_0\,P_T$, where $h_{PL}$ accounts for deterministic path losses (telescope throughput, dichroic filters and fibre coupling).
+
+\subsection{Pointing-Error Fading}
+
+The satellite pointing jitter, due to attitude-control residuals, structural vibration and thermal distortion, is modelled as a random radial displacement $r$ of the beam centre from the receiver aperture. For two-axis jitter with equal variance $\sigma_s^2$, the displacement is Rayleigh distributed: $f_R(r)=(r/\sigma_s^2)\exp(-r^2/2\sigma_s^2)$ \cite{shang2025}.
+
+The collected power fraction as a function of radial displacement is approximately $h_{PE}(r)=A_0\exp(-2r^2/w_z^2)$. Defining the normalised fading variable $y=h_{PE}(r)\in(0,A_0]$, its probability density function and cumulative distribution function follow a power law~\cite{shang2025}:
+\begin{equation}
+f_Y(y)=\frac{\alpha}{A_0^\alpha}\,y^{\alpha-1},\qquad F_Y(y)=\Big(\frac{y}{A_0}\Big)^\alpha,\qquad 0<y\le A_0
+\end{equation}
+where the shape parameter is
+\begin{equation}
+\alpha=\frac{w_z^2}{4\sigma_s^2}
+\end{equation}
+A small $\alpha$ (large jitter relative to the beam) produces heavy-tailed fading with frequent deep fades. For LEO constellations at 1000\,km range, typical values fall in the range $\alpha\in[0.1,\,5]$ depending on the pointing-control accuracy of the spacecraft.
+
+The jitter standard deviation may itself depend on range. Shang \emph{et al.}~\cite{shang2025} use the model $\sigma_s(z)=\sigma_{s0}\exp(k_0z/d_0)$, where $\sigma_{s0}$, $k_0$ and $d_0$ are platform-dependent constants. This captures the physical observation that fine pointing becomes harder as the angular subtense of the beacon shrinks with distance.
+
+\subsection{Data Rate over a Fading Channel}
+
+Given a receiver SNR model $g(y)$ that depends on the instantaneous fading state $y$, the ergodic achievable rate is the average of the mutual information over the fading distribution:
+\begin{equation}
+R=B\int_0^{A_0}m\big(g(y)\big)\,f_Y(y)\,dy
+\end{equation}
+where $B$ is the symbol rate and $m(g)$ is the spectral efficiency at SNR $g$ (in bits per symbol per hertz). For a memoryless AWGN channel with hard-decision decoding, the spectral efficiency is bounded by $m(g)=k[1-H_2(\mathrm{BER}(g))]$, where $k$ is the number of bits per symbol and $H_2$ is the binary entropy function.
+
+The $\epsilon$-outage rate, defined as the rate that can be maintained for all but a fraction $\epsilon$ of the fading realisations, follows from inverting the CDF:
+\begin{equation}
+R_\epsilon=B\cdot m\!\big(g(A_0\,\epsilon^{1/\alpha})\big)
+\end{equation}
+This closed-form expression is a direct consequence of the power-law CDF in eq.~(2.3).
+
+\section{Self-Coherent Detection and the Kramers--Kronig Receiver}
+
+\subsection{Coherent vs Direct Detection}
+
+A conventional coherent receiver mixes the incoming signal with a local oscillator (LO) laser using a 90$^\circ$ optical hybrid and balanced photodiodes. This recovers the full complex optical field (amplitude and phase) and enables the highest spectral efficiencies. However, it requires the LO to be frequency-locked to the transmitter, demands polarisation alignment (or a diversity receiver) and needs carrier-phase recovery in the DSP.
+
+Direct detection with a single photodiode is simpler but measures only the intensity $|E|^2$, discarding the phase. For intensity-modulated formats such as on--off keying (OOK), this suffices; for phase-carrying formats such as QPSK, the phase information is lost.
+
+\subsection{The KK Principle}
+
+The Kramers--Kronig receiver bridges these two extremes~\cite{mecozzi2016}. It uses a single photodiode but recovers the optical phase from the detected intensity by exploiting a property of minimum-phase signals: the phase and the logarithm of the amplitude are related by the Hilbert transform.
+
+A signal $E(t)$ is minimum-phase if its complex analytic extension has no zeros in the upper half of the complex plane. A sufficient condition for a carrier-plus-signal field $E(t)=\sqrt{P_c}+\sqrt{P_s}\,s(t)\,e^{i2\pi f_{sh}t}$ is that the carrier amplitude exceeds the peak of the modulated signal:
+\begin{equation}
+\sqrt{P_c}>\sqrt{P_s}\,|s(t)|_{\max}\quad\Longleftrightarrow\quad \kappa>\mathrm{PAPR}_s
+\end{equation}
+where $\kappa=P_c/P_s$ is the carrier-to-signal power ratio and $\mathrm{PAPR}_s$ is the peak-to-average power ratio of the baseband signal $s(t)$. When this condition is satisfied, the optical phase can be reconstructed as:
+\begin{equation}
+\phi_E(t)=\mathcal{H}\!\Big\{\tfrac12\ln I(t)\Big\}
+\end{equation}
+where $I(t)$ is the photocurrent (in power units) and $\mathcal{H}\{\cdot\}$ denotes the Hilbert transform. The full complex field is then $\hat E(t)=\sqrt{I(t)}\,e^{i\phi_E(t)}$.
+
+The KK receiver was first demonstrated in a fibre-optic link at 200\,Gb/s using 16-QAM~\cite{mecozzi2016}. It has since been extended to higher-order modulation formats, wavelength-division multiplexed systems, and longer reaches.
+
+\subsection{Carrier Placement: Transmitter vs Receiver}
+
+In fibre-optic applications the CW carrier can be generated at either end of the link:
+\begin{itemize}
+\item \textbf{Transmitter-side carrier.} The carrier is generated from the same laser as the data and transmitted in the same spatial mode. The CSPR is fixed at the transmitter and cannot be adjusted independently. The advantage is that the carrier and signal experience identical channel impairments; any common-mode effect (phase noise, chromatic dispersion) cancels in detection.
+
+\item \textbf{Receiver-side LO.} A local CW laser is combined with the incoming signal before the photodiode. The LO power can be set freely, and the CSPR can be made arbitrarily large. However, the LO and the transmitter laser are independent, so their phase noise, frequency offset and polarisation mismatch must be tracked and compensated.
+\end{itemize}
+
+In a fibre link the distinction is largely one of convenience: the channel is stable, the frequency offset is small, and polarisation can be tracked at moderate complexity. In a free-space inter-satellite link, however, the distinction is fundamental, as discussed in the next section.
+
+\section{Challenges of Coherent Detection in OISL}
+
+Several properties of the OISL channel make receiver-side LO architectures significantly more complex than their fibre-optic counterparts:
+
+\paragraph{Doppler shift.} Two LEO spacecraft in different orbital planes can have a relative radial velocity of up to $\pm15$\,km/s. At $\lambda=1530$\,nm this corresponds to a carrier Doppler shift of approximately $\pm9.9$\,GHz. A receiver-side LO must track this shift in real time, requiring either a widely tunable laser (acousto-optic or electro-optic frequency shifter) or a very high-bandwidth digital frequency estimator.
+
+\paragraph{Phase noise.} Two independent lasers contribute uncorrelated phase noise to the beat signal. At the 10\,GBaud symbol rates considered here, linewidths above approximately 100\,kHz begin to cause significant cycle-slip rates. Space-qualified narrow-linewidth lasers are available but add to the terminal's mass and power budget.
+
+\paragraph{Polarisation.} The received optical field arrives in a time-varying polarisation state that depends on spacecraft attitude, telescope alignment and thermal flexure. A single-photodiode receiver with a receiver-side LO sees only the component of the signal that projects onto the LO's polarisation. Full recovery requires a polarisation-diversity front end (a polarisation beam splitter, two photodiodes, and Stokes-parameter tracking), roughly doubling the front-end hardware.
+
+\paragraph{Beam wander and scintillation.} Unlike the fibre channel, the free-space channel subjects the beam to pointing jitter (Section~2.1.2). The fading reduces the received signal power but does not alter the CSPR when carrier and signal co-propagate. With a receiver-side LO the CSPR varies inversely with the fading, because the LO power is fixed.
+
+These considerations motivate the use of a \emph{transmitter-side} carrier for the KK-OISL link. Because the carrier and signal share the same laser and propagation path, the Doppler shift, phase noise and polarisation rotation cancel in square-law detection (Chapter~3, eq.~3.5). The receiver is reduced to a photodiode, an optional EDFA and digital back-end---the minimal hardware configuration for a coherent-capable OISL terminal.
+
+\section{Related Work}
+
+The analytical framework for OISL channel modelling and rate analysis follows Shang, Zhang and Wong~\cite{shang2025}, who derived ergodic and outage rates for a coherent OISL link under power-law pointing-error fading. The present work extends their model by replacing the conventional coherent receiver with a KK self-coherent receiver, adding the CSPR power split, the KK noise enhancement factor and the reconstruction penalty.
+
+The KK receiver was introduced by Mecozzi, Antonelli and Shtaif~\cite{mecozzi2016} for fibre-optic links and has been studied extensively in that context. Its application to free-space optical links is comparatively recent. To the author's knowledge, this is the first study to develop a complete analytical rate model for a KK receiver in an OISL scenario, including the transmitter-side carrier, the minimum-phase reconstruction penalty and validation by waveform-level Monte Carlo simulation.

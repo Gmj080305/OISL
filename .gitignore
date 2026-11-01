@@ -1,0 +1,21 @@
+# MATLAB / Octave
+*.asv
+*.mat
+octave-workspace
+matlab/rate_vs_freq_PT_v2.csv
+
+# LaTeX build files
+report/*.aux
+report/*.log
+report/*.out
+report/*.toc
+report/*.lof
+report/*.lot
+report/*.synctex.gz
+report/*.fls
+report/*.fdb_latexmk
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
