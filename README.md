@@ -27,7 +27,10 @@ ratio for KK to work.
 | Ergodic rate, hard / soft decision | 13.18 / 13.44 Gb/s |
 | Ergodic rate without pre-amplifier | 6.70 Gb/s |
 | Sensitivity at HD-FEC (BER 3.8×10⁻³) | −28.6 dBm |
-| Pointing shape parameter α (σ_s = 5.44 m > w_z = 4.87 m) | 0.20 |
+| Pointing shape parameter α (σ_s = 5.44 m > w_z = 4.87 m; stress case) | 0.20 |
+| Optimum CSPR from waveform simulation | ≈ 7 dB on-axis, 9 dB in deep fades |
+| Residual Doppler (263 kHz, 50 ppm) after recovery | ≤ 0.4 dB penalty down to the FEC threshold |
+| Transmit power for 1 % outage, realistic jitter σ_s0 = 0.5 m | 11.9 dBm (13 dB margin at 0.3 W) |
 | Time below QPSK sensitivity | 41 % |
 | Waveform simulation vs analytic SNR | ≤ 0.1 dB down to 0.03·A₀, 0.4 dB at 0.01·A₀ |
 
@@ -46,17 +49,22 @@ detection. Only a carrier present at the photodiode lets KK recover the phase.*
 OISL/
 ├── README.md                 this file
 ├── CHANGELOG.md              what changed and when
+├── LICENSE                   MIT
 ├── matlab/
 │   ├── oisl_kk_txcarrier.m   main script: analytic model, Monte Carlo, all figures
 │   ├── oisl_kk_channel.m     callable analytic model (for OptiSystem co-simulation)
+│   ├── kk_link.m             waveform simulation core (Tx → channel → EDFA → PD → KK)
+│   ├── rx_metrics.m          pilot-aided SNR / BER / EVM / phase-error measurement
+│   ├── const_map.m, rrc.m, fe_calibrate.m   helpers
 │   ├── run_in_octave.m       runs the main script in GNU Octave
 │   └── tests/
-│       └── check_oisl_kk.m   regression checks for oisl_kk_channel.m
+│       └── check_oisl_kk.m   35 regression checks (analytic model + waveform chain)
 ├── figures/                  figures written by oisl_kk_txcarrier.m (PLOT.save = true)
 ├── report/                   LaTeX source of the study report
 │   ├── main.tex, chapter1-4.tex
 │   ├── figs/                 figures the LaTeX includes (see report/REVISIONS.md)
-│   └── REVISIONS.md          text changes needed to match the current code
+│   ├── OISL_KK_report.pdf    compiled report
+│   └── REVISIONS.md          log of the corrections made to the report
 ├── docs/
 │   ├── background.md         OISL system-model notes and base-paper summary
 │   ├── kk_oisl_model.md      the KK-OISL model: equations and simulation chain
@@ -76,7 +84,7 @@ was tested in GNU Octave 8.4 only. Run it once in MATLAB and compare with
 ```matlab
 cd matlab
 oisl_kk_txcarrier          % edit the RUN.* switches at the top first
-run tests/check_oisl_kk.m  % regression checks, about 10 s
+run tests/check_oisl_kk.m  % regression checks, about 30 s
 ```
 
 Set `PLOT.save = true` to write every figure to `figures/` as PNG and PDF.
@@ -118,10 +126,14 @@ results (constellations, other carrier placements) come from the main script.
 | `RUN.constellation` | Fig 3.6: four carrier/LO placements, one window | on |
 | `RUN.wd` | Fig 3.8: rate vs detector radius | off |
 | `RUN.itu` | Fig 3.9: rate vs P_T at 1530 and 1565 nm | off |
-| `RUN.cspr` | rate vs CSPR (analytic) | off |
+| `RUN.cspr` | rate vs CSPR (analytic; valid for κ ≥ 12 dB) | off |
 | `RUN.cspr_wave` | SNR vs CSPR (waveform), the reference for the CSPR choice | off |
 | `RUN.jitter`, `RUN.outage` | rate vs jitter σ_s0; outage rate vs ε | off |
 | `RUN.mpkk` | Figs 3.10–3.13: CKK / GKK / MP-KK with an imposed front-end distortion | off |
+| `RUN.doppler` | residual Doppler (263 kHz, 50 ppm) with and without recovery | off |
+| `RUN.lo_compare` | Tx carrier vs receiver LO with realistic offset and linewidth | off |
+| `RUN.pointing` | transmit power and range for 1 % / 0.1 % outage vs jitter | off |
+| `RUN.berfec` | counted BER near the FEC threshold, about 10⁶ symbols | off |
 | `RUN.csv` | CSV export of rate vs frequency and power | off |
 
 `RUN.mpkk` is a sensitivity study only. The link model itself has no
@@ -132,9 +144,8 @@ same result; the gain appears only with the imposed distortion. See
 ## Status
 
 - Analytic model and waveform simulation agree; regression checks pass.
-- The report in `report/` predates the October 2026 code changes. Several
-  numbers and statements need updating, listed in
-  [`report/REVISIONS.md`](report/REVISIONS.md).
+- The report in `report/` matches the current code (v2.5); the corrections made
+  are logged in [`report/REVISIONS.md`](report/REVISIONS.md).
 - Open items for discussion with the supervisor are in
   [`docs/open_questions.md`](docs/open_questions.md).
 
@@ -142,10 +153,12 @@ same result; the gain appears only with the imposed distortion. See
 
 Main sources: Shang, Zhang & Wong (IEEE TVT 2025) for the OISL channel and rate
 model; Mecozzi, Antonelli & Shtaif (Optica 2016) for the KK receiver; Wen et al.
-(Optics Express 2023) for MP-KK. Full list with links in
+(Optics Express 2023) for MP-KK. The closest prior work is Naghshvarianjahromi,
+Kumar & Deen (Sensors 2022), a KK transceiver for GEO inter-satellite and
+ground–satellite links under turbulence; this project adds LEO pointing-jitter
+fading, rate analysis and waveform validation. Full list with links in
 [`references/README.md`](references/README.md).
 
 ## Licence
 
-<!-- TODO: no licence chosen yet. Without one, others may read but not reuse the
-code. MIT is a common choice for academic code. -->
+MIT (see [`LICENSE`](LICENSE)).

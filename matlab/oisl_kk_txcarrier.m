@@ -27,6 +27,12 @@
 %                (shared kk_link core, pilot-aided metrics, B1 = LO before the
 %                diode with no EDFA, B2 = carrier added after detection, colour /
 %                density / pointing-overlay plots); optional waveform CSPR sweep.
+%   v2.6 (Nov 2026): Sections 11-14: residual Doppler and recovery DSP, fair
+%                receiver-LO comparison, realistic-pointing power/range study,
+%                BER near the FEC threshold.
+%   v2.5 (Nov 2026): heuristic reconstruction penalty off by default (P.recon);
+%                PAPR = 10^-4 CCDF point; waveform core moved to function files
+%                (kk_link.m, rx_metrics.m, const_map.m, rrc.m, fe_calibrate.m).
 %   v2.4 (Nov 2026): every figure saved with PLOT.save; Fig 3.4 recon term fixed
 %                (was a scalar, drawn as 200 separate lines); RUN.wd (Fig 3.8) and
 %                RUN.itu (Fig 3.9) added; RUN.mpkk off by default.
@@ -62,6 +68,10 @@ P.G_dB     = 15;         % [dB]   pre-amp gain (fixed)
 P.NF_dB    = 5;          % [dB]   pre-amp noise figure
 P.Bf       = 30e9;       % [Hz]   optical band-pass filter after the pre-amp
 P.pth      = 0;          % [W]    optional tracking threshold (0 = none)
+P.recon    = false;      % true: add the heuristic KK reconstruction penalty
+                         %       PAPR*P_viol(kappa). It is 35-50 dB more pessimistic than
+                         %       the waveform simulation (docs/results.md), so it is off by
+                         %       default and only kept for comparison.
 
 MODS = {'BPSK','OOK','QPSK'};     % modulations to evaluate
 
@@ -75,6 +85,13 @@ SW.sig0_vec  = linspace(0.2, 4, 30);           % [m]   optional jitter sweep
 SW.z_vec     = [500e3 1000e3 1500e3];          % [m]   optional jitter sweep curves
 SW.eps_vec   = logspace(-3, -0.3, 40);         % [-]   optional outage sweep
 SW.wd_vec    = 0.04:0.01:0.10;                 % [m]   detector radius sweep (Fig 3.8)
+SW.v_max     = 15e3;                           % [m/s] relative radial velocity (+-9.9 GHz Doppler)
+SW.trk_win_vec = [3 5 9 17 33 65];             % [sym] phase-tracking windows tried for B1
+SW.sig0_real = [0.25 0.5 0.75 1 1.5 2];        % [m]   jitter values for the pointing study
+SW.avail_eps = [1e-2 1e-3];                    % [-]   outage targets (99 %, 99.9 % availability)
+SW.z_range   = (100:50:5000)*1e3;              % [m]   range grid for the maximum-range search
+SW.ber_targets = [3.8e-3 1e-4];                % [-]   analytic BER points for the BER count
+SW.ber_runs  = 8;  SW.ber_log2N = 17;          % 8 x 2^17 symbols (about 1e6) per point
 
 % ---- Monte Carlo settings ----
 MC.Nchan     = 2e5;               % channel MC samples
@@ -90,6 +107,10 @@ MC.guard     = 16;                % pilot symbols at each block edge left out of
 MC.lo_kappa  = 10^(12/10);        % LO-to-signal power ratio at y = MC.lo_yref (set below to A0)
 MC.lo_df     = 0;                 % residual LO frequency offset after locking [Hz]  (0 = ideal LO)
 MC.lo_lw     = 0;                 % combined Tx + LO laser linewidth [Hz]           (0 = ideal LO)
+MC.lo_real_df = 100e6;            % realistic B1 LO: residual offset after locking [Hz] (Section 12)
+MC.lo_real_lw = [200e3 2e6];      % realistic B1 LO: combined linewidths to compare [Hz]
+MC.Npost     = 128;               % known symbols at the frame end (used only with recovery)
+MC.trk_win   = 129;               % phase-tracking window [symbols] (A2; B1 window is optimised)
 SW.CSPR_wave_dB = 3:1:15;         % [dB]  waveform CSPR sweep (RUN.cspr_wave)
 SW.cspr_yrel    = [1 0.1 0.03];   % [-]   pointing states for the waveform CSPR sweep
 
@@ -103,7 +124,7 @@ PLOT.dir  = fullfile('..', 'figures');   % repo-level figures/ folder
 for mm = 1:numel(MODS)
     P.PAPR.(MODS{mm}) = signal_papr(MODS{mm}, P.B, P.beta);
 end
-fprintf('Signal PAPR: BPSK %.1f dB, OOK %.1f dB, QPSK %.1f dB\n', ...
+fprintf('Signal PAPR (10^-4 CCDF): BPSK %.1f dB, OOK %.1f dB, QPSK %.1f dB\n', ...
     10*log10(P.PAPR.BPSK), 10*log10(P.PAPR.OOK), 10*log10(P.PAPR.QPSK));
 
 % ---- which sections to run ----
@@ -122,6 +143,10 @@ RUN.wd       = false;  % optional: Fig 3.8  rate vs detector radius
 RUN.itu      = false;  % optional: Fig 3.9  rate vs PT at 1530 / 1565 nm
 RUN.mpkk     = false;  % optional: Fig 3.10-3.13 CKK / CKK+EQ / GKK / MP-KK with an
                        %           IMPOSED front-end distortion (sensitivity study only)
+RUN.doppler  = false;  % optional: residual Doppler with and without recovery (Section 11)
+RUN.lo_compare = false; % optional: A2 vs receiver LO with realistic offset/linewidth (Section 12)
+RUN.pointing = false;  % optional: required P_T and range for a target outage (Section 13)
+RUN.berfec   = false;  % optional: counted BER near the FEC threshold, ~1e6 symbols (Section 14)
 RUN.csv      = false;  % optional: CSV of rate vs f vs PT
 csv_file     = 'rate_vs_freq_PT_v2.csv';
 
@@ -142,11 +167,12 @@ if RUN.budget
     for i = 1:numel(fn)
         fprintf('  SNR (%-8s only)    : %.1f dB\n', fn{i}, -10*log10(T.(fn{i})));
     end
-    fprintf('  SNR (total, no recon)  : %.1f dB\n', 10*log10(g));
+    fprintf('  SNR (total)            : %.1f dB\n', 10*log10(g));
     for m = 1:numel(MODS)
-        [gm, Tm] = rx_snr(P, P.f, Prx, MODS{m});
-        fprintf('  %-4s PAPR = %.1f dB, recon SNR = %.1f dB, total SNR = %.1f dB\n', ...
-            MODS{m}, 10*log10(P.PAPR.(MODS{m})), -10*log10(Tm.recon), 10*log10(gm));
+        gm = rx_snr(P, P.f, Prx, MODS{m});
+        fprintf('  %-4s PAPR = %.1f dB, heuristic recon SNR = %.1f dB (%s), total SNR = %.1f dB\n', ...
+            MODS{m}, 10*log10(P.PAPR.(MODS{m})), -10*log10(recon_term(P, MODS{m})), ...
+            onoff_str(P.recon, 'included', 'not included'), 10*log10(gm));
         sp = sensitivity(P,P.f,MODS{m});
         if isinf(sp), sens_str = 'inf (KK fails)';
         else, sens_str = sprintf('%.1f dBm', 10*log10(sp/1e-3)); end
@@ -193,7 +219,7 @@ end
 %% ===================== 5. Fig 3.4 : SNR CONTRIBUTIONS vs y ==================
 if RUN.ybudget
     y = GQ.A0*SW.yrel;
-    [g, T] = rx_snr(P, P.f, P.hPL*P.PT*y, 'QPSK');    % include reconstruction penalty for QPSK
+    [g, T] = rx_snr(P, P.f, P.hPL*P.PT*y, 'QPSK');    % recon term shown only if P.recon
     figure('Name','SNR budget vs y'); hold on; grid on;
     fn = fieldnames(T);
     for i = 1:numel(fn)
@@ -385,7 +411,8 @@ if RUN.cspr
         end
     end
     xlabel('CSPR [dB]'); ylabel('Ergodic rate [Gbps]'); legend('Location','best');
-    title(sprintf('Rate vs CSPR  (dashed = PAPR threshold), pre-amp %s', onoff(P.pre_on)));
+    title({sprintf('Analytic rate vs CSPR (dashed = PAPR, 10^{-4} CCDF), pre-amp %s', onoff(P.pre_on)), ...
+           'noise model verified for \kappa \geq 12 dB only; use RUN.cspr\_wave for the optimum'}, 'FontSize', 9);
     save_fig(PLOT, 'fig_opt_rate_vs_cspr');
 end
 if RUN.jitter
@@ -410,7 +437,7 @@ if RUN.outage
     save_fig(PLOT, 'fig_opt_outage_rate');
 end
 if RUN.cspr_wave
-    % Waveform SNR vs CSPR (solid) against the analytic model incl. the recon term (dashed).
+    % Waveform SNR vs CSPR (solid) against the analytic model (dashed; recon term only if P.recon).
     % This is the reference for the optimum CSPR: the waveform includes every KK effect.
     figure('Name','SNR vs CSPR (waveform)','Color','w'); hold on; grid on;
     cl = lines(numel(SW.cspr_yrel)); lg = {};
@@ -617,7 +644,208 @@ if RUN.mpkk
     save_fig(PLOT, 'fig313_ckk_vs_mpkk_constellation');
 end
 
-%% ===================== 11. FUNCTIONS ======================================
+%% ===================== 11. DOPPLER RESIDUAL AND RECOVERY ===================
+%  With a transmitter carrier the common Doppler shift f*v/c cancels in detection,
+%  but the data sideband sits f_sh above the carrier and the symbol clock is scaled,
+%  so a residual offset f_sh*v/c (about 263 kHz at 15 km/s) and a v/c (50 ppm) clock
+%  scaling remain. This section shows (a) what they do without recovery and (b) that
+%  a pilot-based frequency/clock estimate plus blind phase tracking removes them.
+%  Frame: MC.Npilot pilots at the start and MC.Npost at the end.
+%  Not modelled: Tx/Rx oscillator mismatch (needs timing recovery in any receiver).
+if RUN.doppler
+    DP.yrel = [1 0.3 0.1 0.03 0.0123 0.01];   % 0.0123*A0 = QPSK HD-FEC threshold
+    DP.v    = SW.v_max;
+    cases   = {'no Doppler',               0,     false;
+               'Doppler, no recovery',     DP.v,  false;
+               'Doppler + recovery',       DP.v,  true;
+               'Doppler (-v) + recovery', -DP.v,  true};
+    snr = zeros(size(cases,1), numel(DP.yrel)); dfh = snr;
+    for i = 1:size(cases,1)
+        for j = 1:numel(DP.yrel)
+            L = kk_link(P, P.f, P.PT, GQ.A0*DP.yrel(j), MC.wave_mod, MC, ...
+                        struct('v', cases{i,2}, 'track', cases{i,3}));
+            snr(i,j) = rx_metrics(L, MC.Npilot).snr; dfh(i,j) = L.df_hat;
+        end
+    end
+    fprintf('\n--- Doppler residual, %s, v = %.0f km/s (residual offset f_sh*v/c = %.0f kHz, clock %.0f ppm) ---\n', ...
+        MC.wave_mod, DP.v/1e3, (1+MC.beta)*P.B/2*DP.v/P.c/1e3, DP.v/P.c*1e6);
+    fprintf('%-26s', 'y/A0'); fprintf('%9g', DP.yrel); fprintf('\n');
+    for i = 1:size(cases,1)
+        fprintf('%-26s', [cases{i,1} ' [dB]']); fprintf('%9.2f', 10*log10(snr(i,:))); fprintf('\n');
+    end
+    fprintf('%-26s', 'estimated offset [kHz]'); fprintf('%9.1f', dfh(3,:)/1e3); fprintf('\n');
+    figure('Name','Doppler residual','Color','w'); hold on; grid on; box on;
+    st = {'k--','r-o','b-s','c-^'};
+    for i = 1:size(cases,1)
+        semilogx(DP.yrel, 10*log10(snr(i,:)), st{i}, 'LineWidth', 1.4);
+    end
+    set(gca, 'XScale', 'log'); xlabel('y / A_0'); ylabel('SNR [dB]');
+    legend(cases(:,1), 'Location', 'southeast');
+    title(sprintf('A2 with residual Doppler (v = %.0f km/s): f_{sh}v/c and v/c clock scaling', DP.v/1e3));
+    save_fig(PLOT, 'fig_doppler_recovery');
+end
+
+%% ===================== 12. RECEIVER-LO COMPARISON (fair B1) ==================
+%  A2 (transmitter carrier, with Doppler and recovery) against B1 (receiver LO)
+%  with an ideal LO and with a realistic LO: residual frequency offset after
+%  locking MC.lo_real_df and combined Tx + LO linewidth MC.lo_real_lw. B1 gets the
+%  same frequency and phase recovery, with the phase-tracking window chosen per
+%  case from SW.trk_win_vec to give B1 its best result (optimistic for B1).
+if RUN.lo_compare
+    LC.yrel = [1 0.3 0.1 0.03];
+    LC.lw   = MC.lo_real_lw;
+    names = [{'A2 Tx carrier (Doppler + recovery)', 'B1 ideal LO'}, ...
+             arrayfun(@(w) sprintf('B1 LO: %g MHz offset, %g kHz linewidth', ...
+                     MC.lo_real_df/1e6, w/1e3), LC.lw, 'UniformOutput', false)];
+    snr = zeros(numel(names), numel(LC.yrel)); wbest = snr;
+    for j = 1:numel(LC.yrel)
+        y = GQ.A0*LC.yrel(j);
+        snr(1,j) = rx_metrics(kk_link(P, P.f, P.PT, y, MC.wave_mod, MC, ...
+                   struct('config','tx_carrier','v',SW.v_max,'track',true)), MC.Npilot).snr;
+        snr(2,j) = rx_metrics(kk_link(P, P.f, P.PT, y, MC.wave_mod, MC, ...
+                   struct('config','rx_lo')), MC.Npilot).snr;
+        for i = 1:numel(LC.lw)
+            best = 0;
+            for W = SW.trk_win_vec
+                M2 = MC; M2.lo_df = MC.lo_real_df; M2.lo_lw = LC.lw(i); M2.trk_win = W;
+                o = rx_metrics(kk_link(P, P.f, P.PT, y, MC.wave_mod, M2, ...
+                    struct('config','rx_lo','track',true)), MC.Npilot);
+                if o.snr > best, best = o.snr; wbest(2+i,j) = W; end
+            end
+            snr(2+i,j) = best;
+        end
+    end
+    fprintf('\n--- Receiver-LO comparison, %s (B1: no EDFA, LO %.2f mW) ---\n', MC.wave_mod, ...
+        MC.lo_kappa*P.hPL*MC.lo_yref*P.PT*1e3);
+    fprintf('%-44s', 'y/A0'); fprintf('%9g', LC.yrel); fprintf('\n');
+    for i = 1:numel(names)
+        fprintf('%-44s', [names{i} ' [dB]']); fprintf('%9.2f', 10*log10(snr(i,:))); fprintf('\n');
+    end
+    for i = 1:numel(LC.lw)
+        fprintf('%-44s', sprintf('  best tracking window, %g kHz [symbols]', LC.lw(i)/1e3));
+        fprintf('%9d', wbest(2+i,:)); fprintf('\n');
+    end
+    figure('Name','Receiver-LO comparison','Color','w'); hold on; grid on; box on;
+    st = {'k-o','b--','r-s','m-^','g-d'};
+    for i = 1:numel(names)
+        semilogx(LC.yrel, 10*log10(snr(i,:)), st{i}, 'LineWidth', 1.4);
+    end
+    set(gca, 'XScale', 'log'); xlabel('y / A_0'); ylabel('SNR [dB]');
+    legend(names, 'Location', 'southeast', 'FontSize', 8);
+    title('Transmitter carrier (A2) vs receiver LO (B1), same recovery DSP');
+    save_fig(PLOT, 'fig_lo_comparison');
+end
+
+%% ===================== 13. REALISTIC POINTING: POWER AND RANGE ===============
+%  With the stress-case jitter (sigma_s0 = 2 m) the link is below sensitivity 41 %
+%  of the time. For realistic jitter the useful question is the transmit power (or
+%  range) needed for a target availability. With the power-law CDF of y:
+%     P(P_rx < P_sens) = (P_sens / (h_PL P_T A0))^alpha
+%  so the minimum transmit power for an outage probability eps is
+%     P_T,min = P_sens / (h_PL A0 eps^(1/alpha))
+%  (analytic model, kappa = 12 dB). Note: the jitter model of Shang et al. gives
+%  sigma_s in metres; for an angular jitter (sigma_s = z*sigma_theta) alpha would
+%  not depend on range. See docs/open_questions.md.
+if RUN.pointing
+    PO.sig0 = SW.sig0_real;
+    PO.eps  = SW.avail_eps;
+    PO.mod  = 'QPSK';
+    Psens   = sensitivity(P, P.f, PO.mod);
+    Psens_n = sensitivity(setf(P,'pre_on',false), P.f, PO.mod);
+    PTmin = zeros(numel(PO.eps), numel(PO.sig0)); PTmin_n = PTmin;
+    al = zeros(size(PO.sig0)); Rerg = al;
+    for i = 1:numel(PO.sig0)
+        Pi = setf(P, 'sigma_s0', PO.sig0(i)); Gi = geom(Pi, P.f, P.z); al(i) = Gi.alpha;
+        PTmin(:,i)   = Psens  ./ (P.hPL*Gi.A0*PO.eps(:).^(1/Gi.alpha));
+        PTmin_n(:,i) = Psens_n./ (P.hPL*Gi.A0*PO.eps(:).^(1/Gi.alpha));
+        Rerg(i) = R_erg(Pi, P.f, P.PT, PO.mod, 'hard');
+    end
+    fprintf('\n--- Realistic pointing (%s, z = %.0f km, kappa = %.0f dB) ---\n', PO.mod, P.z/1e3, P.CSPR_dB);
+    fprintf('Sensitivity: %.1f dBm (EDFA), %.1f dBm (photodiode only)\n', ...
+        10*log10(Psens/1e-3), 10*log10(Psens_n/1e-3));
+    fprintf('%-10s %-7s %-14s', 'sigma_s0', 'alpha', 'R_erg(0.3 W)');
+    fprintf(' P_T,min @%.0e (EDFA / no EDFA)', PO.eps); fprintf('\n');
+    for i = 1:numel(PO.sig0)
+        fprintf('%-10.2f %-7.2f %-14s', PO.sig0(i), al(i), sprintf('%.2f Gb/s', Rerg(i)/1e9));
+        fprintf('   %7.1f / %7.1f dBm       ', [10*log10(PTmin(:,i)/1e-3) 10*log10(PTmin_n(:,i)/1e-3)].');
+        fprintf('\n');
+    end
+    % feasible range window at P.PT for each availability target. In this jitter
+    % model sigma_s is a length that grows slowly with z while the beam radius grows
+    % in proportion to z, so outage rises at short AND at long range.
+    zg = SW.z_range; Rmin = NaN(numel(PO.eps), numel(PO.sig0)); Rmax = Rmin;
+    for i = 1:numel(PO.sig0)
+        Pi = setf(P, 'sigma_s0', PO.sig0(i));
+        pout = zeros(size(zg));
+        for k = 1:numel(zg)
+            Gk = geom(Pi, P.f, zg(k));
+            pout(k) = min(1, (Psens/(P.hPL*P.PT*Gk.A0))^Gk.alpha);
+        end
+        for e = 1:numel(PO.eps)
+            ok = find(pout <= PO.eps(e));
+            if ~isempty(ok), Rmin(e,i) = zg(ok(1)); Rmax(e,i) = zg(ok(end)); end
+        end
+    end
+    fprintf('Feasible range window at P_T = %.2f W (EDFA), km (NaN = none in %.0f-%.0f km):\n', ...
+        P.PT, zg(1)/1e3, zg(end)/1e3);
+    for e = 1:numel(PO.eps)
+        fprintf('  outage %.0e:', PO.eps(e));
+        for i = 1:numel(PO.sig0)
+            fprintf('  [%g m] %4.0f-%4.0f', PO.sig0(i), Rmin(e,i)/1e3, Rmax(e,i)/1e3);
+        end
+        fprintf('\n');
+    end
+    figure('Name','Realistic pointing','Color','w','Position',[100 100 1000 400]);
+    subplot(1,2,1); hold on; grid on; box on; cl = lines(numel(PO.eps));
+    for e = 1:numel(PO.eps)
+        plot(PO.sig0, 10*log10(PTmin(e,:)/1e-3), '-', 'Color', cl(e,:), 'LineWidth', 1.5);
+        plot(PO.sig0, 10*log10(PTmin_n(e,:)/1e-3), '--', 'Color', cl(e,:), 'LineWidth', 1.2);
+    end
+    plot(PO.sig0([1 end]), 10*log10(P.PT/1e-3)*[1 1], 'k:');
+    ylim([0 60]); xlabel('\sigma_{s0} [m]'); ylabel('Required P_T [dBm]');
+    lg = {}; for e = 1:numel(PO.eps), lg = [lg, {sprintf('outage %.0e, EDFA', PO.eps(e)), ...
+                                                   sprintf('outage %.0e, no EDFA', PO.eps(e))}]; end
+    legend([lg, {sprintf('P_T = %.1f W', P.PT)}], 'Location', 'northwest', 'FontSize', 7);
+    title(sprintf('Transmit power for a target outage, z = %.0f km', P.z/1e3));
+    subplot(1,2,2); hold on; grid on; box on;
+    for e = 1:numel(PO.eps)
+        plot(PO.sig0, Rmax(e,:)/1e3, '-o', 'Color', cl(e,:), 'LineWidth', 1.5);
+        plot(PO.sig0, Rmin(e,:)/1e3, '--o', 'Color', cl(e,:), 'LineWidth', 1.2, 'HandleVisibility', 'off');
+    end
+    xlabel('\sigma_{s0} [m]'); ylabel('Range [km]');
+    legend(arrayfun(@(x) sprintf('outage %.0e (solid max, dashed min)', x), PO.eps, 'UniformOutput', false), ...
+        'Location', 'northeast', 'FontSize', 8);
+    title(sprintf('Feasible range window at P_T = %.1f W (EDFA)', P.PT));
+    save_fig(PLOT, 'fig_pointing_power_range');
+end
+
+%% ===================== 14. BER NEAR THE FEC THRESHOLD =======================
+%  Counts bit errors over SW.ber_runs x 2^SW.ber_log2N symbols at the pointing
+%  states where the analytic BER equals each value in SW.ber_targets, to validate
+%  the BER (not only the SNR) in the region that matters for the FEC.
+if RUN.berfec
+    BF.mod = MC.wave_mod;
+    fprintf('\n--- BER near the FEC threshold (%s, %d runs x 2^%d symbols) ---\n', ...
+        BF.mod, SW.ber_runs, SW.ber_log2N);
+    for bt = SW.ber_targets
+        gt = fzero(@(gd) ber_theory(BF.mod, 10^(gd/10)) - bt, [-10 30]);
+        Prx = 10^fzero(@(lp) 10*log10(rx_snr(P, P.f, 10^lp, BF.mod)) - gt, [-14 0]);
+        y = Prx/(P.hPL*P.PT);
+        nerr = 0; nbits = 0; snr_acc = 0;
+        for run = 1:SW.ber_runs
+            M2 = MC; M2.Nsym = 2^SW.ber_log2N; M2.seed = 100 + run;
+            o = rx_metrics(kk_link(P, P.f, P.PT, y, BF.mod, M2), M2.Npilot);
+            nerr = nerr + o.nerr; nbits = nbits + o.nbits; snr_acc = snr_acc + o.snr;
+        end
+        pb = nerr/nbits; ci = 1.96*sqrt(pb*(1-pb)/nbits);
+        fprintf('target BER %.1e (g = %.2f dB, y/A0 = %.4f): counted %.3e +- %.1e (%d errors / %d bits), mean SNR %.2f dB\n', ...
+            bt, gt, y/GQ.A0, pb, ci, nerr, nbits, 10*log10(snr_acc/SW.ber_runs));
+    end
+end
+
+%% ===================== 15. FUNCTIONS ======================================
+%  Waveform core in separate files (also used by tests/check_oisl_kk.m):
+%    kk_link.m, rx_metrics.m, const_map.m, rrc.m, fe_calibrate.m
 function G = geom(P, f, z)
     G.lam   = P.c/f;
     G.theta = G.lam/(pi*P.w0);
@@ -629,11 +857,9 @@ end
 
 function [g, T] = rx_snr(P, f, Prx, mod)
 % Total electrical SNR g (= Es/N0) for received optical power Prx (vector) - eqs. (3.13)-(3.16)
-% Optional 4th arg 'mod' ('BPSK','OOK','QPSK'): includes KK reconstruction penalty.
-%   T.recon = PAPR_s * P_viol(kappa), where P_viol is the probability that the
-%   minimum-phase condition |E_c| > |E_s(t)| is violated.
-%   QPSK (complex Gaussian): P_viol = exp(-kappa)
-%   BPSK/OOK (real Gaussian): P_viol = erfc(sqrt(kappa/2))
+% Optional 4th arg 'mod': adds the heuristic reconstruction penalty T.recon
+% (see recon_term) when P.recon is true. Off by default: the waveform simulation
+% shows it is far too pessimistic. The validated model is valid for kappa >= 12 dB.
     k    = 10^(P.CSPR_dB/10);  zeta = 1 + 2/k;
     hnu  = P.h*f;
     if P.pre_on
@@ -654,19 +880,28 @@ function [g, T] = rx_snr(P, f, Prx, mod)
         T.ASE    = (1+zeta)*S*P.B./Ps;                              % signal-ASE + carrier-ASE (both sides)
         T.ASExASE = zeta*(4*P.eta^2*S^2*(P.Bf - P.B/2))*P.B./sig;  % ASE-ASE beat, both pols
     end
-    % KK reconstruction penalty from minimum-phase violation
-    if nargin >= 4 && ~isempty(mod)
-        papr = P.PAPR.(mod);                       % measured signal PAPR (linear)
-        switch mod
-            case 'QPSK',           pviol = exp(-k);
-            case {'BPSK', 'OOK'},  pviol = erfc(sqrt(k/2));
-        end
-        T.recon = papr * max(pviol, 1e-30) + zeros(size(Prx));   % same size as Prx (plots, sums)
+    % optional heuristic reconstruction penalty
+    if nargin >= 4 && ~isempty(mod) && isfield(P,'recon') && P.recon
+        T.recon = recon_term(P, mod) + zeros(size(Prx));          % same size as Prx (plots, sums)
     end
     fn = fieldnames(T); tot = 0;
     for i = 1:numel(fn), tot = tot + T.(fn{i}); end
     g = 1./tot;
 end
+
+function r = recon_term(P, mod)
+% Heuristic KK reconstruction penalty 1/g_rec = PAPR_s * P_viol(kappa), with
+% P_viol = exp(-kappa) (QPSK, complex Gaussian) or erfc(sqrt(kappa/2)) (BPSK/OOK).
+% NOT validated: 35-50 dB more pessimistic than the waveform simulation.
+    k = 10^(P.CSPR_dB/10);
+    switch mod
+        case 'QPSK',          pviol = exp(-k);
+        case {'BPSK','OOK'},  pviol = erfc(sqrt(k/2));
+    end
+    r = P.PAPR.(mod) * max(pviol, 1e-30);
+end
+
+function s = onoff_str(b, a, c), if b, s = a; else, s = c; end, end
 
 function m = mi(mod, g, kind)
 % Information bits per symbol. kind = 'hard' (BSC per bit) or 'soft' (GMI)
@@ -740,6 +975,7 @@ function Ps = sensitivity(P, f, mod)
 end
 
 function Q = setf(P, name, val), Q = P; Q.(name) = val; end
+
 function s = onoff(b), if b, s = 'on'; else, s = 'off'; end, end
 
 function o = kk_wave_mc(P, f, PT, y, mod, MC)
@@ -748,134 +984,6 @@ function o = kk_wave_mc(P, f, PT, y, mod, MC)
     o = rx_metrics(kk_link(P, f, PT, y, mod, MC), MC.Npilot);
 end
 
-function L = kk_link(P, f, PT, y, mod, MC, opt)
-% Shared end-to-end waveform link (Tx -> channel -> [EDFA] -> photodiode -> KK DSP
-% -> matched filter). Returns symbol-rate samples r and the sent symbols.
-%   opt.config : 'tx_carrier'  A2  carrier + SSB data share PT, both faded by y
-%                'rx_lo'       B1  all of PT carries data; LO added just before the
-%                                  diode, no EDFA (the LO provides the gain)
-%                'no_carrier'  A1/B3 data only, no carrier anywhere
-%                'post_det_lo' B2  data only at the diode; the carrier level is
-%                                  added digitally after detection, before KK
-%   opt.noise  : struct of logicals .ase .shot .th .rin (all true by default),
-%                lets each noise term be switched off to test the analytic model
-%   opt.dist   : front-end distortion struct from fe_calibrate (empty = none)
-%   opt.comp   : pre-KK compensation: .type 'none' | 'gkk' | 'mpkk', .K, .M,
-%                .solver 'ls' | 'lms', .mu, .epochs  (trained on the pilot block)
-%   opt.post_eq: number of taps of a post-KK symbol-rate FFE (0 = none)
-    if nargin < 7, opt = struct(); end
-    if ~isfield(opt,'config'), opt.config = 'tx_carrier'; end
-    if ~isfield(opt,'noise'),  opt.noise = struct('ase',true,'shot',true,'th',true,'rin',true); end
-    rng(MC.seed);
-    Ns = MC.Nsym; Nos = MC.Nos; N = Ns*Nos; fs = Nos*P.B;
-    t  = (0:N-1).'/fs;
-    fr = ((0:N-1).' - N*((0:N-1).' >= N/2))*fs/N;          % FFT frequency grid
-    [pts, lab] = const_map(mod);
-    idx = randi(numel(pts), Ns, 1); a = pts(idx);
-    Hr = rrc(fr/P.B, MC.beta);                             % RRC pulse shaping (cyclic)
-    up = zeros(N,1); up(1:Nos:end) = a;
-    s  = ifft(fft(up).*Hr); s = s/sqrt(mean(abs(s).^2));   % unit average power
-    Bo = (1+MC.beta)*P.B; df = fs/N; fsh = ceil((Bo/2)/df)*df + df;
-    k  = 10^(P.CSPR_dB/10);
-    ssb = s.*exp(1i*2*pi*fsh*t);
-    pre_on = P.pre_on; ElO = 0; P_LO = 0;
-    % ---- optical field at the receiver aperture (after the channel)
-    switch opt.config
-        case 'tx_carrier'
-            E = sqrt(P.hPL*y)*(sqrt(k/(1+k)*PT) + sqrt(PT/(1+k))*ssb);
-        case 'rx_lo'
-            E = sqrt(P.hPL*y*PT)*ssb;
-            pre_on = false;
-            P_LO = MC.lo_kappa*P.hPL*MC.lo_yref*PT;        % CSPR = lo_kappa at y = lo_yref
-            ph = 2*pi*MC.lo_df*t;                          % residual LO frequency offset [Hz]
-            if MC.lo_lw > 0                                % combined Tx + LO linewidth [Hz]
-                ph = ph + cumsum(sqrt(2*pi*MC.lo_lw/fs)*randn(N,1));
-            end
-            ElO = sqrt(P_LO)*exp(-1i*ph);
-        case {'no_carrier','post_det_lo'}
-            E = sqrt(P.hPL*y*PT)*ssb;
-        otherwise, error('Unknown config: %s', opt.config);
-    end
-    % ---- optional pre-amplifier with ASE (both polarisations) and optical BPF of width Bf
-    if pre_on
-        Gr = 10^(P.G_dB/10); F = 10^(P.NF_dB/10); S = P.h*f*(F*Gr-1)/2;
-        bpf = abs(fr - Bo/2) <= P.Bf/2;
-        n1 = ifft(fft(sqrt(S*fs/2)*(randn(N,1)+1i*randn(N,1))).*bpf);
-        n2 = ifft(fft(sqrt(S*fs/2)*(randn(N,1)+1i*randn(N,1))).*bpf);
-        if ~opt.noise.ase, n1 = 0*n1; n2 = 0*n2; end
-        Ex = sqrt(Gr)*E + n1; Ey = n2;
-    else
-        Gr = 1; Ex = E; Ey = 0;
-    end
-    Ex = Ex + ElO;                                         % B1 only (ElO = 0 otherwise)
-    % ---- photodiode: square law + shot, thermal and RIN (white, one-sided PSD Ni)
-    I    = P.eta*(abs(Ex).^2 + abs(Ey).^2);
-    Idc  = mean(I);
-    Ni   = opt.noise.shot*2*P.q*Idc + opt.noise.th*P.i_th^2 + opt.noise.rin*10^(P.RIN_dB/10)*Idc^2;
-    I    = I + sqrt(Ni*fs/2)*randn(N,1);
-    I    = real(ifft(fft(I).*(abs(fr) <= Bo)));             % electrical bandwidth Bo
-    if strcmp(opt.config,'post_det_lo')                    % B2: carrier term added in DSP
-        I = I + P.eta*Gr*P.hPL*y*PT*k;
-    end
-    % ---- noiseless, undistorted reference photocurrent (what training symbols predict)
-    Iref = P.eta*abs(sqrt(Gr)*E + ElO).^2;
-    Iref = real(ifft(fft(Iref).*(abs(fr) <= Bo)));
-    % ---- optional receiver front-end distortion (Section 10, paper eqs. 1-2)
-    if isfield(opt,'dist') && ~isempty(opt.dist), I = fe_distort(I, opt.dist); end
-    trn = (MC.guard*Nos+1):((MC.Npilot-MC.guard)*Nos);    % training samples (pilot block)
-    pay = (MC.Npilot*Nos+1):N;                              % payload samples
-    L.nmse_in = nmse_db(I, Iref, pay);
-    % ---- optional pre-KK compensation: GKK (memoryless) or MP-KK (memory polynomial)
-    if isfield(opt,'comp') && ~strcmp(opt.comp.type,'none')
-        I = fe_compensate(I, Iref, trn, opt.comp);
-    end
-    L.nmse = nmse_db(I, Iref, pay);                        % photocurrent error vs reference
-    % ---- KK DSP (eqs. 3.6-3.11)
-    In  = I/P.eta; In = max(In, 1e-9*mean(In));
-    phi = real(ifft(-1i*sign(fr).*fft(0.5*log(In))));
-    Eh  = sqrt(In).*exp(1i*phi);
-    xs  = (Eh - mean(Eh)).*exp(-1i*2*pi*fsh*t);            % remove carrier, then down-shift
-    r   = ifft(fft(xs).*Hr); r = r(1:Nos:end);             % matched filter, 1 sample/symbol
-    % ---- optional post-KK symbol-rate equaliser (the paper's "CKK + equaliser")
-    if isfield(opt,'post_eq') && opt.post_eq > 0
-        r = sym_ffe(r, a, MC.Npilot, opt.post_eq);
-    end
-    L.a = a; L.idx = idx; L.r = r; L.pts = pts; L.lab = lab;
-    L.I = I; L.Iref = Iref;
-    L.Pd_dBm = 10*log10(mean(abs(Ex).^2 + abs(Ey).^2)/1e-3); % optical power on the diode
-    L.P_LO = P_LO;
-end
-
-function [pts, lab] = const_map(mod)
-    switch mod
-        case 'BPSK', pts = [1; -1];            lab = [0; 1];
-        case 'OOK',  pts = [1; 0];             lab = [0; 1];
-        case 'QPSK', pts = [1+1i; -1+1i; -1-1i; 1-1i]/sqrt(2); lab = [0 0; 1 0; 1 1; 0 1];
-    end
-end
-
-function o = rx_metrics(L, Npilot)
-% Pilot-aided one-tap gain/phase estimate (the first Npilot symbols are known
-% pilots, as a real receiver would have). SNR, BER, EVM and phase error are then
-% measured on the payload only, so no genie knowledge of the data is used.
-    a = L.a; r = L.r; pts = L.pts; lab = L.lab;
-    p  = 1:Npilot; d = Npilot+1:numel(a);
-    Gc = (a(p)'*r(p))/(a(p)'*a(p));
-    req = r/Gc;                                            % equalised, unit-energy scale
-    e   = req(d) - a(d);
-    o.snr  = mean(abs(a(d)).^2)/mean(abs(e).^2);
-    [~, dec] = min(abs(req(d) - pts.').^2, [], 2);
-    o.nerr  = sum(sum(lab(L.idx(d),:) ~= lab(dec,:)));
-    o.nbits = numel(lab(L.idx(d),:));
-    o.ber   = o.nerr/o.nbits;
-    o.evm   = sqrt(mean(abs(e).^2)/mean(abs(a(d)).^2));
-    o.phase_err = angle(req(d)./a(d));
-    o.sigma_phi = std(o.phase_err);
-    o.sym = req(d); o.tx = a(d); o.idx = L.idx(d);
-    o.sym_plot = o.sym/sqrt(mean(abs(o.sym).^2));          % unit-power view (same axes for all)
-end
-
-%% ---- plotting helpers (work in MATLAB and Octave, no toolboxes) ----
 function s = metrics_str(o, mod)
 % Two-line metrics summary (cell array) for a panel title
     if o.evm < 1, evs = sprintf('EVM %.1f%%', 100*o.evm); else, evs = 'EVM >100%'; end
@@ -964,80 +1072,6 @@ function save_fig(PLOT, name)
     end
 end
 
-%% ---- front-end distortion and CKK / GKK / MP-KK compensation (Section 10) ----
-function D = fe_calibrate(Iref, SNL_dB, SME_dB, tap_samp)
-% Fix the distortion coefficients so that, at the reference photocurrent Iref,
-%   S_NL = 10 log10(S / N_NL) = SNL_dB   (paper eq. 13)
-%   S_ME = 10 log10(S / N_ME) = SME_dB   (paper eq. 14)
-% N is the power NOT explained by a best affine fit (gain + offset) of the
-% distorted output on the input, i.e. the true distortion. The coefficients are
-% then held fixed for every pointing state, as for a physical device.
-    sig = std(Iref); u = (Iref - mean(Iref))/sig;
-    D.sig_ref = sig; D.tap = tap_samp;
-    D.a2 = solve_sdr(@(c) u + c*u.^2, u, SNL_dB);
-    D.b  = solve_sdr(@(c) u + c*(circshift(u,tap_samp) + circshift(u,2*tap_samp)), u, SME_dB);
-    D.SNL_dB = sdr_db(u, u + D.a2*u.^2);
-    D.SME_dB = sdr_db(u, u + D.b*(circshift(u,tap_samp) + circshift(u,2*tap_samp)));
-end
-
-function c = solve_sdr(fun, u, target_dB)
-% Bisection on log10(c) for a coefficient giving the requested signal-to-distortion ratio
-    if isinf(target_dB), c = 0; return; end
-    lo = -5; hi = 2;
-    if sdr_db(u, fun(10^hi)) > target_dB
-        warning('S = %.1f dB not reachable; using the strongest distortion (%.1f dB).', ...
-            target_dB, sdr_db(u, fun(10^hi)));
-        c = 10^hi; return;
-    end
-    for it = 1:60
-        mid = (lo + hi)/2;
-        if sdr_db(u, fun(10^mid)) > target_dB, lo = mid; else, hi = mid; end
-    end
-    c = 10^((lo + hi)/2);
-end
-
-function s = sdr_db(x, y)
-    A = [ones(numel(x),1) x(:)]; c = A\y(:); res = y(:) - A*c;
-    s = 10*log10(var(c(2)*x(:))/var(res));
-end
-
-function I = fe_distort(I, D)
-% AC-coupled front-end (TIA / driver / ADC) model, paper Fig. 3 in series:
-%   nonlinearity  v[n] = u[n] + a2*u[n]^2                       (paper eq. 1, K = 2)
-%   memory        w[n] = v[n] + b*v[n-d] + b*v[n-2d]            (paper eq. 2, M = 3)
-% u is the AC part of the photocurrent in units of its on-axis rms (D.sig_ref),
-% so the nonlinearity weakens in a fade, as it would for a real device.
-% The DC level is restored ideally afterwards (KK needs it).
-    Idc = mean(I); u = (I - Idc)/D.sig_ref;
-    v = u + D.a2*u.^2;
-    w = v + D.b*(circshift(v, D.tap) + circshift(v, 2*D.tap));
-    I = Idc + D.sig_ref*(w - mean(w));
-end
-
-function Io = fe_compensate(I, Iref, trn, C)
-% Pre-KK inverse model trained on the pilot block (paper eq. 11):
-%   GKK  : z[n] = d0 + sum_{k=1..K} d_k * u[n]^k                       (memoryless)
-%   MP-KK: z[n] = d0 + sum_{k=1..K} sum_{m=0..M-1} d_km * u[n-m]^k     (memory polynomial)
-% For a real, non-negative intensity the paper's x|x|^k terms are plain powers.
-% Coefficients by least squares (= converged LMS) or by normalised LMS (paper Table 1).
-    mu0 = mean(I(trn)); s0 = std(I(trn)); u = (I - mu0)/s0;
-    if strcmp(C.type, 'gkk'), M = 1; else, M = C.M; end
-    X  = mp_basis(u, C.K, M);
-    dm = mean(Iref(trn)); ds = std(Iref(trn)); d = (Iref - dm)/ds;
-    if isfield(C,'solver') && strcmp(C.solver, 'lms')
-        w = zeros(size(X,2), 1);
-        for ep = 1:C.epochs
-            for n = trn
-                x = X(n,:).'; e = d(n) - w.'*x;
-                w = w + C.mu*e*x/(1e-9 + x.'*x);
-            end
-        end
-    else
-        w = X(trn,:)\d(trn);
-    end
-    Io = dm + ds*(X*w);
-end
-
 function R = mpkk_receivers(D, MP)
 % Receiver set compared in Section 10 (first entry: undistorted reference)
     cg = struct('type','gkk', 'K',MP.Kg, 'M',1,    'solver',MP.solver,'mu',MP.mu,'epochs',MP.epochs);
@@ -1049,51 +1083,18 @@ function R = mpkk_receivers(D, MP)
     R.col   = [0.5 0.5 0.5; 0.25 0.25 0.25; 0 0.45 0.74; 0.47 0.67 0.19; 0.85 0.20 0.20];
 end
 
-function X = mp_basis(u, K, M)
-    X = ones(numel(u), 1 + K*M); c = 1;
-    for m = 0:M-1
-        um = circshift(u, m);
-        for k = 1:K, c = c + 1; X(:,c) = um.^k; end
-    end
-end
-
-function v = nmse_db(I, Iref, idx)
-% Normalised mean-square error of the photocurrent vs the undistorted reference
-% (paper eq. 15), after removing gain and offset
-    A = [ones(numel(idx),1) I(idx)]; c = A\Iref(idx);
-    v = 10*log10(mean((Iref(idx) - A*c).^2)/var(Iref(idx)));
-end
-
-function r = sym_ffe(r, a, Np, T)
-% Post-KK complex symbol-rate FFE with T taps, least squares on the pilots
-    c = (T-1)/2; R = zeros(numel(r), T);
-    for j = 1:T, R(:,j) = circshift(r, j-1-c); end
-    w = R(1:Np,:)\a(1:Np);
-    r = R*w;
-end
-
-function H = rrc(fn, beta)
-% Root-raised-cosine amplitude response, fn = f/B
-    af = abs(fn); H = zeros(size(fn));
-    f1 = (1-beta)/2; f2 = (1+beta)/2;
-    H(af <= f1) = 1;
-    m = af > f1 & af <= f2;
-    H(m) = sqrt(0.5*(1 + cos(pi/beta*(af(m) - f1))));
-end
-
 function papr = signal_papr(mod, B, beta)
-% Compute peak-to-average power ratio of the pulse-shaped signal via short waveform.
-% Used to scale the KK reconstruction penalty.
-    Nsym = 2^13; Nos = 8; N = Nsym*Nos; fs = Nos*B;
+% Peak-to-average power ratio of the RRC-shaped signal, defined as the 10^-4 point
+% of the instantaneous-power CCDF (2^17 symbols, 8 samples/symbol, fixed seed).
+% A CCDF point is stable; the single largest peak of one waveform is not (it
+% depends on the random generator). The caller's RNG state is restored.
+    Nsym = 2^17; Nos = 8; N = Nsym*Nos; fs = Nos*B;
     fr = ((0:N-1).' - N*((0:N-1).' >= N/2))*fs/N;
-    switch mod
-        case 'BPSK', pts = [1; -1];
-        case 'OOK',  pts = [1; 0];
-        case 'QPSK', pts = [1+1i; -1+1i; -1-1i; 1-1i]/sqrt(2);
-    end
-    rng(42);                                    % reproducible
+    pts = const_map(mod);
+    rs = rng; rng(42);
     up = zeros(N,1); up(1:Nos:end) = pts(randi(numel(pts), Nsym, 1));
+    rng(rs);
     s  = ifft(fft(up).*rrc(fr/B, beta));
-    s  = s / sqrt(mean(abs(s).^2));             % unit average power
-    papr = max(abs(s).^2);                      % PAPR in linear
+    p  = sort(abs(s).^2/mean(abs(s).^2));
+    papr = p(ceil((1 - 1e-4)*N));                % 10^-4 CCDF point (linear)
 end

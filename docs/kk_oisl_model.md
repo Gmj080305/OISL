@@ -16,7 +16,7 @@ the pointing fraction, so the CSPR at the receiver equals κ for every pointing
 state. KK needs the field to be minimum-phase; a sufficient condition is
 $\kappa > \mathrm{PAPR}_s$.
 
-## 2. Receiver chain (waveform simulation, `kk_link`)
+## 2. Receiver chain (waveform simulation, `kk_link.m`)
 
 1. Optional EDFA pre-amplifier: gain $G$ = 15 dB, noise figure 5 dB, ASE in both
    polarisations, optical band-pass filter $B_f$ = 30 GHz.
@@ -38,14 +38,15 @@ $S = 2\eta^2 P_{c,d}P_{s,d}$ and the KK noise factor $\zeta = 1 + 2/\kappa$:
 |---|---|
 | Shot, thermal, RIN, ASE×ASE | $g_j = S / (\zeta N_j B)$ |
 | Signal/carrier–ASE | $g_{ASE} = P_{s,d} / [(1+\zeta) S_{ASE} B]$ |
-| Reconstruction penalty (heuristic) | $1/g_{rec} = \mathrm{PAPR}_s \cdot P_{viol}(\kappa)$ |
+| Reconstruction penalty (heuristic, **off by default**, `P.recon`) | $1/g_{rec} = \mathrm{PAPR}_s \cdot P_{viol}(\kappa)$ |
 
 $$g(y) = \Big(\sum_j 1/g_j\Big)^{-1}$$
 
 Validated term by term against the waveform simulation (see `results.md`):
 the ASE term and ζ hold within 0.15 dB for κ ≥ 12 dB. The reconstruction penalty
-is far more pessimistic than the waveform at low κ and should not be used to pick
-the CSPR; the waveform sweep (`RUN.cspr_wave`) is the reference for that.
+is 35–50 dB more pessimistic than the waveform, so it is excluded from all results
+unless `P.recon = true`; the waveform sweep (`RUN.cspr_wave`) determines the
+optimum CSPR. $\mathrm{PAPR}_s$ is the 10⁻⁴ point of the power CCDF.
 
 ## 4. Pointing fading and rates
 

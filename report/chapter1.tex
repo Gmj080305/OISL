@@ -15,7 +15,7 @@ This study report develops an end-to-end analytical model of a KK-OISL link with
 \begin{enumerate}
 \item Formulate the optical field model for a KK-OISL transmitter and receiver, including the carrier--signal power split (CSPR), single-sideband modulation and the minimum-phase condition.
 
-\item Derive the electrical signal-to-noise ratio (SNR) at the receiver output, accounting for six physical noise sources: shot noise, thermal noise, laser relative intensity noise (RIN), signal--ASE beat noise, ASE$\times$ASE beat noise, and a KK reconstruction penalty that models the effect of minimum-phase violations.
+\item Derive the electrical signal-to-noise ratio (SNR) at the receiver output, accounting for five physical noise sources (shot noise, thermal noise, laser relative intensity noise (RIN), signal/carrier--ASE beat noise and ASE$\times$ASE beat noise) and the noise enhancement of the KK algorithm.
 
 \item Integrate the SNR model over the pointing-error fading distribution to obtain ergodic and outage data rates for BPSK, OOK and QPSK modulation formats.
 
@@ -31,13 +31,13 @@ This study report develops an end-to-end analytical model of a KK-OISL link with
 The main contributions of this work are:
 
 \begin{itemize}
-\item A closed-form KK reconstruction penalty (eq.~\ref{eq:recon} in Chapter~3) that models the minimum-phase violation probability as a function of CSPR and modulation format, producing the physically expected bell-shaped rate--CSPR curve without resorting to arbitrary impairment penalties.
+\item A waveform-validated noise model for the transmitter-carrier KK receiver under pointing-error fading. Each noise term is checked separately against an end-to-end waveform simulation; the model holds within 0.15\,dB for CSPR $\kappa\ge12$\,dB. A closed-form Gaussian bound on the KK reconstruction penalty is shown to be 35--50\,dB too pessimistic, so the optimum CSPR is taken from the waveform simulation instead: about 7\,dB on-axis and 9\,dB in deep fades.
 
-\item A constellation-level comparison of four carrier/LO configurations (transmitter carrier, receiver-side optical LO, no carrier, and post-KK LO) with a clear physical explanation of why the last two fail: square-law detection destroys optical phase irreversibly, and the KK Hilbert-transform relation holds only when the field is minimum-phase.
+\item A constellation-level comparison of four carrier/LO configurations (transmitter carrier, receiver-side optical LO, no carrier, and a carrier added digitally after detection) with a clear physical explanation of why the last two fail: square-law detection destroys optical phase irreversibly, and the KK Hilbert-transform relation holds only when the field is minimum-phase.
 
-\item A parametric study of detector aperture radius (0.04--0.10\,m) and ITU-T C-band wavelength (1530 and 1565\,nm), demonstrating that the default detector radius of 0.07\,m achieves approximately 94\,\% of the maximum possible rate, and that the rate varies by less than 2\,\% across the C-band.
+\item A parametric study of detector aperture radius (0.04--0.10\,m) and ITU-T C-band wavelength (1530 and 1565\,nm), showing that the default detector radius of 0.07\,m reaches about 94\,\% of the rate obtained with the largest radius in the sweep (0.10\,m), and that the rate varies by about 2\,\% across the C-band.
 
-\item A self-contained, cross-validated simulation package (MATLAB + Python mirror) with zero external dependencies, suitable for reproducible analysis and OptiSystem integration.
+\item A simulation package for MATLAB and GNU Octave that needs no toolboxes, with regression checks for both the analytic model and the waveform simulation, and a callable analytic model for OptiSystem co-simulation.
 \end{itemize}
 
 \section{Report Organisation}

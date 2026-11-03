@@ -10,7 +10,43 @@
 - Added `docs/kk_oisl_model.md`, `docs/results.md`, `docs/open_questions.md`
   and `report/REVISIONS.md`.
 
+### Report (v2.5)
+
+- All corrections listed in `report/REVISIONS.md` applied; the report now matches
+  the code. Figures regenerated into `report/figs/`; compiled PDF added.
+- Novelty statement revised: the closest prior work (Naghshvarianjahromi et al.,
+  2022) is cited and distinguished. Bibliography extended (Wen 2023, Mecozzi 2019).
+- MIT licence added.
+
 ### matlab/oisl_kk_txcarrier.m
+
+**v2.6 (Nov 2026)**
+- Section 11 (`RUN.doppler`): residual Doppler (f_sh·v/c ≈ 263 kHz offset and
+  50 ppm clock scaling at 15 km/s) in `kk_link`, and receiver recovery: pilot-based
+  frequency estimate (start and end pilots), clock correction from the same
+  estimate, blind phase tracking. Penalty ≤ 0.4 dB down to the FEC threshold.
+- Section 12 (`RUN.lo_compare`): A2 against a receiver LO with a 100 MHz residual
+  offset and 200 kHz / 2 MHz linewidth, both with recovery.
+- Section 13 (`RUN.pointing`): transmit power and feasible range for 1 % and
+  0.1 % outage versus jitter. `oisl_kk_channel` returns `p_below_sens`,
+  `PT_min_1e2`, `PT_min_1e3`.
+- Section 14 (`RUN.berfec`): counted BER with about 10⁶ symbols at the
+  HD-FEC threshold and at 10⁻⁴; matches the analytic BER.
+- `rx_metrics` excludes end pilots; `run_in_octave.m` finds the function section
+  by its title. 35 regression checks.
+
+**v2.5 (Nov 2026)**
+- The heuristic reconstruction penalty PAPR·P_viol(κ) is off by default
+  (`P.recon = false`) in both the script and `oisl_kk_channel.m`: the waveform
+  simulation shows it is 35–50 dB too pessimistic. Rates are unchanged; the
+  on-axis BPSK/OOK SNR is now 31.05 dB, matching the waveform.
+- PAPR is the 10⁻⁴ point of the power CCDF (2¹⁷ symbols) instead of the largest
+  peak of one waveform, which depended on the random generator.
+- Waveform core moved to function files (`kk_link.m`, `rx_metrics.m`,
+  `const_map.m`, `rrc.m`, `fe_calibrate.m`), so tests can call it.
+- `tests/check_oisl_kk.m` now has 28 checks, including the waveform chain
+  (waveform vs analytic SNR, noiseless reconstruction, carrier placements,
+  MP-KK on an undistorted link).
 
 **v2.4 (Nov 2026)**
 - Every figure is saved when `PLOT.save = true` (PNG + PDF, in `figures/`).

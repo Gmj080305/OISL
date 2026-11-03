@@ -6,15 +6,18 @@
    a validation of the analytic model? This decides which numbers go in the
    abstract.
 2. **Operating CSPR.** Keep κ = 12 dB, or move to the waveform-optimal value
-   (about 7 dB on-axis, 9 dB at 0.03·A₀, +2–3 dB SNR)? Should the Gaussian
-   reconstruction-penalty formula be replaced by a waveform-calibrated table, or
-   dropped and the analysis restricted to κ ≥ 10 dB?
+   (about 7 dB on-axis, 9 dB at 0.03·A₀, +2–3 dB SNR)? The heuristic
+   reconstruction formula has been dropped from the results (v2.5); a
+   waveform-calibrated g(y, κ) table would allow analytic rates below 12 dB.
 3. **Receiver-LO comparison (B1).** Which LO power, and should the LO be ideal or
    have a realistic linewidth and residual offset? Those LO costs are what
    numerically justify choosing the transmitter carrier.
-4. **Doppler time-scaling.** At 15 km/s the symbol clock shifts by 50 ppm and a
-   residual offset of about 260 kHz remains after KK. Model it? It follows from
-   numbers already in the report and is not an arbitrary penalty.
+4. **Jitter model.** Shang et al. model σ_s as a length growing as e^{k₀z/d₀}.
+   Real pointing jitter is angular (σ_s = z·σ_θ), which makes α independent of
+   range and removes the lower edge of the feasible range window
+   (`results.md` §8). Which model should the paper use, and with which σ_θ?
+   (Doppler, the fair LO comparison and BER near the FEC threshold are done; see
+   `results.md` §6, 7, 9.)
 5. **DSP scope.** On this link, GKK, MP-KK, DFE and MLSE give no gain at the
    operating CSPR (no nonlinearity, memory or ISI in the model). Should they be
    evaluated only at the OptiSystem stage with real component models? Is FEC
@@ -28,28 +31,31 @@
 
 ## Known limitations of the current model
 
-- The reconstruction penalty $\mathrm{PAPR}_s\,P_{viol}(\kappa)$ is heuristic. At
-  κ = 6 dB the waveform gives 44.8 dB reconstruction-limited SNR where the formula
-  gives 10.5 dB. For BPSK it lowers the analytic on-axis SNR to 29.2 dB while the
-  waveform gives 31.05 dB.
+- No validated closed-form model of KK reconstruction exists in this work. The
+  heuristic $\mathrm{PAPR}_s\,P_{viol}(\kappa)$ (off by default since v2.5) gives
+  10.5 dB at κ = 6 dB where the waveform gives 44.8 dB.
 - $\zeta = 1 + 2/\kappa$ holds within 0.15 dB for κ ≥ 12 dB; it is 0.8 dB off at
   9 dB and 4.7 dB off at 6 dB.
-- The measured PAPR is the peak of one random waveform. It depends on the random
-  generator and seed (QPSK: 8.5 dB in the old Python runs, 6.8 dB in Octave).
 - In the deepest fades (≈0.01·A₀, SNR ≈ 7 dB) KK falls 0.4 dB short of the linear
   noise model.
-- With 2¹³ symbols per run, BER below about 10⁻⁴ cannot be measured; lower values
-  are SNR-based.
-- Not modelled: Doppler time-scaling and residual offset, EDFA gain saturation,
-  laser linewidth for the B1 LO (unless set), any hardware bandwidth or
-  nonlinearity, atmospheric effects (vacuum link).
+- With 2¹³ symbols per run, BER below about 10⁻⁴ cannot be measured; the
+  dedicated BER runs (§9 of `results.md`) use about 10⁶ symbols.
+- Not modelled: Tx/Rx oscillator mismatch (timing recovery), Doppler rate within
+  a frame, EDFA gain saturation, hardware bandwidth or nonlinearity, atmospheric
+  effects (vacuum link).
+- Doppler recovery fails occasionally below the FEC threshold (0.01·A₀,
+  SNR ≈ 6.6 dB), where the link is in outage anyway.
+- The B1 phase-tracking window is chosen per case with knowledge of the payload
+  SNR (optimistic for B1).
 - The analytic function `oisl_kk_channel.m` models the transmitter-carrier link
   only.
 
 ## Planned next steps
 
 1. Run the code once in MATLAB and compare with `results.md`.
-2. Update the report text (`report/REVISIONS.md`).
+2. Decide the jitter model (item 4) and redo the pointing study with it.
+3. A KK vs coherent vs IM/DD comparison under the same fading, with consistent
+   noise models for each receiver.
 3. OptiSystem co-simulation: CW laser (linewidth, RIN) → QPSK + RRC → IQ modulator
    with the carrier set by bias → MATLAB component scaling the field by
    $\sqrt{h_{PL}y}$ → EDFA → 30 GHz optical filter → PIN photodiode → Bessel

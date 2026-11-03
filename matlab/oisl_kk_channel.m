@@ -47,6 +47,9 @@ function result = oisl_kk_channel(varargin)
 %     G_dB      - Pre-amp gain                    [dB]      (default: 15)
 %     NF_dB     - Pre-amp noise figure            [dB]      (default: 5)
 %     Bf        - Optical filter bandwidth        [Hz]      (default: 30e9)
+%     recon     - Add the heuristic KK reconstruction penalty [bool] (default: false).
+%                 Not validated: 35-50 dB more pessimistic than the waveform
+%                 simulation. The model without it is verified for CSPR >= 12 dB.
 %
 %   Simulation:
 %     config    - Carrier/LO configuration; only 'tx_carrier' is modelled
@@ -66,7 +69,7 @@ function result = oisl_kk_channel(varargin)
 %   result.Ps_dBm      - Signal received power [dBm]
 %   result.kappa       - CSPR (linear)
 %   result.zeta        - KK noise enhancement factor (1+2/kappa)
-%   result.PAPR_dB     - Signal PAPR for chosen modulation [dB]
+%   result.PAPR_dB     - Signal PAPR for chosen modulation, 10^-4 CCDF point [dB]
 %   result.snr_dB      - Total SNR at operating point [dB]
 %   result.noise_budget - Struct: each field = individual noise SNR [dB]
 %   result.rate_hard   - Ergodic rate, hard decision [bps]
@@ -74,6 +77,8 @@ function result = oisl_kk_channel(varargin)
 %   result.rate_out10  - 10% outage rate [bps]
 %   result.sens_dBm    - Receiver sensitivity [dBm] (Inf if KK fails)
 %   result.sens_W      - Receiver sensitivity [W]
+%   result.p_below_sens - Fraction of time the received power is below sensitivity
+%   result.PT_min_1e2, result.PT_min_1e3 - Transmit power for 1e-2 / 1e-3 outage [W]
 %   result.ber_theory  - Uncoded BER at the operating point y
 %   result.gfec_dB     - SNR needed for the 3.8e-3 HD-FEC threshold [dB]
 %   result.Prx_W, .snr, .y, .mod, .config - operating point echoes
@@ -189,6 +194,9 @@ function result = oisl_kk_channel(varargin)
     result.rate_out10   = rate_out;
     result.sens_dBm     = 10*log10(sp/1e-3);
     result.sens_W       = sp;
+    result.p_below_sens = min(1, (sp/(P.hPL*P.PT*G.A0))^G.alpha);      % fraction of time below sensitivity
+    result.PT_min_1e2   = sp/(P.hPL*G.A0*1e-2^(1/G.alpha));            % P_T for 1e-2 outage [W]
+    result.PT_min_1e3   = sp/(P.hPL*G.A0*1e-3^(1/G.alpha));            % P_T for 1e-3 outage [W]
     result.ber_theory   = ber;
     result.gfec_dB      = gfec;
     result.config       = config;
@@ -232,6 +240,7 @@ function P = default_params()
     P.NF_dB    = 5;             % noise figure [dB]
     P.Bf       = 30e9;          % optical filter BW [Hz]
     P.pth      = 0;             % tracking threshold [W]
+    P.recon    = false;         % heuristic reconstruction penalty (off: not validated)
     P.c        = c;
     P.q        = 1.602176634e-19;
     P.h        = 6.62607015e-34;
@@ -256,7 +265,7 @@ end
 
 
 %% =========================================================================
-%  RECEIVER SNR (with optional reconstruction penalty)
+%  RECEIVER SNR (heuristic reconstruction penalty only if P.recon)
 %  =========================================================================
 function [g, T] = rx_snr_(P, f, Prx, mod)
     k    = 10^(P.CSPR_dB/10);
@@ -281,7 +290,7 @@ function [g, T] = rx_snr_(P, f, Prx, mod)
         T.ASE     = (1+zeta) * S * P.B ./ Ps;
         T.ASExASE = zeta * 4 * P.eta^2 * S^2 * (P.Bf - P.B/2) * P.B ./ sig;
     end
-    if nargin >= 4 && ~isempty(mod)
+    if nargin >= 4 && ~isempty(mod) && P.recon
         papr = P.PAPR.(mod);
         switch mod
             case 'QPSK',          pviol = exp(-k);
@@ -388,7 +397,9 @@ end
 %  SIGNAL PAPR  (from RRC pulse-shaped waveform)
 %  =========================================================================
 function papr = signal_papr_(mod, B, beta)
-    Nsym = 2^13; Nos = 8; N = Nsym*Nos; fs = Nos*B;
+% 10^-4 point of the instantaneous-power CCDF (2^17 symbols, fixed seed).
+% Same definition as signal_papr() in oisl_kk_txcarrier.m.
+    Nsym = 2^17; Nos = 8; N = Nsym*Nos; fs = Nos*B;
     fr = ((0:N-1).' - N*((0:N-1).' >= N/2)) * fs/N;
     switch mod
         case 'BPSK', pts = [1; -1];
@@ -399,8 +410,8 @@ function papr = signal_papr_(mod, B, beta)
     up = zeros(N,1); up(1:Nos:end) = pts(randi(numel(pts), Nsym, 1));
     rng(rs);
     s  = ifft(fft(up) .* rrc_(fr/B, beta));
-    s  = s / sqrt(mean(abs(s).^2));
-    papr = max(abs(s).^2);
+    p  = sort(abs(s).^2 / mean(abs(s).^2));
+    papr = p(ceil((1 - 1e-4)*N));
 end
 
 

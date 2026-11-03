@@ -10,9 +10,10 @@
 %   PLOT.save = true in oisl_kk_txcarrier.m and start Octave with xvfb-run.
 
 src_file = 'oisl_kk_txcarrier.m';
-marker   = '%% ===================== 11. FUNCTIONS';
+marker   = '. FUNCTIONS ===';            % header of the local-function section
 src = fileread(src_file);
 k = strfind(src, marker);
+if ~isempty(k), k = find(src(1:k(1)) == sprintf('\n'), 1, 'last') + 1; end   % start of that line
 if isempty(k)
     error('Function-section marker not found in %s; update ''marker'' in run_in_octave.m.', src_file);
 end

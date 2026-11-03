@@ -1,6 +1,6 @@
 # Reference results
 
-Numbers produced by the code in `matlab/` (v2.4) with the default parameters
+Numbers produced by the code in `matlab/` (v2.6) with the default parameters
 (1530 nm, P_T = 0.3 W, z = 1000 km, κ = 12 dB, B = 10 GBd, β = 0.05, EDFA on).
 Run with GNU Octave 8.4, November 2026.
 
@@ -8,9 +8,9 @@ Run with GNU Octave 8.4, November 2026.
 deterministic and should match MATLAB to the digits shown. Monte Carlo numbers
 depend on the random-number generator: MATLAB and Octave give different
 sequences for the same seed, so expect differences of about ±0.1 dB in waveform
-SNR. The measured PAPR is the single largest peak of one random waveform and can
-differ by more than 1 dB between generators (Octave: QPSK 6.8 dB; the earlier
-Python runs: 8.5 dB). At κ = 12 dB this has no visible effect on QPSK results.
+SNR. PAPR is the 10⁻⁴ point of the power CCDF over 2¹⁷ symbols, which varies
+by only about ±0.1 dB between generators (the single largest peak used before
+v2.5 varied by more than 1 dB).
 
 ## 1. Geometry and noise budget at y = A₀ (`RUN.budget`)
 
@@ -25,8 +25,9 @@ Python runs: 8.5 dB). At κ = 12 dB this has no visible effect on QPSK results.
 | SNR, RIN only | 40.0 dB |
 | SNR, signal/carrier–ASE only | 31.9 dB |
 | SNR, ASE×ASE only | 74.8 dB |
-| SNR, reconstruction term, QPSK / BPSK | 62.0 dB / 33.7 dB (PAPR-dependent) |
-| **SNR total, QPSK, pre-amp on** | **31.05 dB** |
+| PAPR (10⁻⁴ CCDF), BPSK / OOK / QPSK | 7.5 / 7.4 / 6.4 dB |
+| Heuristic reconstruction term, QPSK / BPSK (**not included**, `P.recon = false`) | 62.5 dB / 34.2 dB |
+| **SNR total, pre-amp on (all modulations)** | **31.05 dB** |
 | SNR total, photodiode only | 18.65 dB |
 
 ## 2. Rates and sensitivity
@@ -76,10 +77,12 @@ Python runs: 8.5 dB). At κ = 12 dB this has no visible effect on QPSK results.
 |---|---|---|---|
 | Thermal only, no EDFA | 6 / 9 / 12 / 15 dB | 17.53 / 20.12 / 18.73 / 16.31 dB | 22.20 / 20.91 / 18.87 / 16.38 dB |
 | ASE only, EDFA on | 9 / 12 / 15 dB | 34.32 / 31.91 / 29.19 dB | 34.35 / 31.85 / 29.11 dB |
-| Noiseless, QPSK (reconstruction limit) | 6 / 9 / 12 dB | 44.8 / 78.2 / 100.9 dB | 10.5 / 27.7 / 62.0 dB (formula) |
+| Noiseless, QPSK (reconstruction limit) | 6 / 9 / 12 dB | 44.8 / 78.2 / 100.9 dB | 10.5 / 27.7 / 62.0 dB (heuristic formula, single-peak PAPR 6.8 dB; +0.4 dB with the CCDF PAPR) |
 
-So the ASE term is exact, ζ holds for κ ≥ 12 dB, and the reconstruction formula
-is far too pessimistic.
+So the ASE term is exact, ζ holds for κ ≥ 12 dB, and the heuristic reconstruction
+formula is far too pessimistic. Since v2.5 it is off by default (`P.recon`).
+Rates are unaffected (the term was negligible for QPSK at 12 dB and only lowered
+the on-axis BPSK/OOK SNR from 31.05 to about 29 dB).
 
 **Waveform SNR vs CSPR** (`RUN.cspr_wave`, QPSK):
 
@@ -117,9 +120,104 @@ spacing 2 samples), QPSK, SNR in dB:
 | GKK | 11.0 | 12.8 | 13.3 | 13.1 | 12.4 | 11.3 | 9.9 | 6.6 |
 | MP-KK (K = 3, M = 7) | 16.4 | 24.1 | 24.0 | 20.9 | 17.3 | 14.4 | 11.9 | 7.3 |
 
+BER is counted directly only where errors occur (y = 0.01·A₀ here); elsewhere
+the validation rests on the measured SNR.
+
 MP-KK vs K (M = 7): 11.1, 14.9, 16.4, 16.9, 17.2 dB for K = 1…5.
 MP-KK vs M (K = 3): 11.0, 14.0, 15.7, 16.0, 16.4, 16.5, 16.5 dB for M = 1, 2, 3, 5, 7, 9, 13.
 
 **Without the imposed distortion** (the actual link model) all receivers give the
 same result at κ = 12 dB: 31.05 (CKK), 31.02 (CKK + EQ), 31.07 (GKK) and
 31.05 dB (MP-KK) on-axis.
+
+## 6. Residual Doppler and recovery (`RUN.doppler`, Section 11)
+
+With a transmitter carrier the common Doppler shift cancels, but at v = 15 km/s
+(±9.9 GHz carrier Doppler) the data sideband keeps a residual offset
+f_sh·v/c ≈ 263 kHz and the symbol clock is scaled by v/c = 50 ppm. The receiver
+estimates the offset from pilots (512 at the frame start, 128 at the end), takes
+the clock correction from the same estimate (ε = Δf/f_sh), and tracks the
+remaining phase blindly (4th power, 129-symbol window, leave-one-out). QPSK SNR
+in dB:
+
+| y/A₀ | 1 | 0.3 | 0.1 | 0.03 | 0.0123 (FEC threshold) | 0.01 |
+|---|---|---|---|---|---|---|
+| No Doppler | 31.06 | 26.07 | 20.90 | 14.25 | 8.28 | 6.65 |
+| Doppler, no recovery | 1.99 | 1.98 | 1.95 | 1.77 | 1.12 | 0.78 |
+| Doppler + recovery | 30.83 | 25.90 | 20.75 | 14.10 | 7.93 | 6.10 |
+| Doppler (−v) + recovery | 30.97 | 25.95 | 20.76 | 14.08 | 8.10 | 6.33 |
+| Estimated offset [kHz] | 266 | 268 | 272 | 284 | 317 | 338 |
+
+Without recovery the residual Doppler destroys the link. With recovery the
+penalty is ≤ 0.25 dB down to 0.03·A₀ and ≤ 0.4 dB at the FEC threshold (checked
+over 6 random seeds). Not modelled: Tx/Rx oscillator mismatch, which needs
+timing recovery in any receiver; Doppler rate (acceleration) within a frame.
+
+## 7. Receiver-LO comparison with a realistic LO (`RUN.lo_compare`, Section 12)
+
+B1: data at full P_T, LO 1.77 mW before the photodiode, no EDFA. The realistic LO
+has a 100 MHz residual offset after locking and 200 kHz or 2 MHz combined
+linewidth. B1 gets the same frequency/phase recovery, with the tracking window
+chosen per case to give B1 its best result (optimistic for B1). QPSK SNR in dB:
+
+| y/A₀ | 1 | 0.3 | 0.1 | 0.03 |
+|---|---|---|---|---|
+| A2 Tx carrier (Doppler + recovery) | 30.83 | 25.90 | 20.75 | 14.10 |
+| B1 ideal LO | 37.30 | 32.74 | 28.15 | 22.98 |
+| B1, 100 MHz offset, 200 kHz linewidth | 35.04 | 31.70 | 27.63 | 22.76 |
+| B1, 100 MHz offset, 2 MHz linewidth | 31.36 | 29.55 | 26.40 | 22.14 |
+
+A realistic LO reduces B1's on-axis advantage from 6.5 dB to 4.2 dB (200 kHz) or
+0.5 dB (2 MHz), but at 0.1·A₀ and below B1 stays 5.7–8.7 dB better: its fixed LO power keeps the
+beat signal above thermal noise (SNR ∝ y), while A2's carrier fades with the
+signal (SNR ∝ y² when thermal-limited). The case for A2 therefore rests on the
+hardware it avoids (LO laser, ±9.9 GHz tracking, frequency locking, polarisation
+control), not on SNR.
+
+## 8. Realistic pointing: power and range for a target outage (`RUN.pointing`, Section 13)
+
+QPSK, z = 1000 km, κ = 12 dB. P(P_rx < P_sens) = (P_sens/(h_PL P_T A₀))^α, so
+P_T,min = P_sens/(h_PL A₀ ε^{1/α}). Sensitivity −28.6 dBm with EDFA, −14.7 dBm
+without.
+
+| σ_s0 | α | Ergodic rate at 0.3 W | P_T for 1 % outage (EDFA / none) | P_T for 0.1 % outage (EDFA / none) |
+|---|---|---|---|---|
+| 0.25 m | 12.8 | 20.00 Gb/s | 7.2 / 21.2 dBm | 8.0 / 22.0 dBm |
+| 0.5 m | 3.21 | 20.00 Gb/s | 11.9 / 25.9 dBm | 15.0 / 29.0 dBm |
+| 0.75 m | 1.43 | 19.99 Gb/s | 19.7 / 33.6 dBm | 26.7 / 40.7 dBm |
+| 1 m | 0.80 | 19.70 Gb/s | 30.6 / 44.6 dBm | 43.1 / 57.0 dBm |
+| 2 m (stress case) | 0.20 | 13.18 Gb/s | 105 / 119 dBm (infeasible) | 155 / 169 dBm (infeasible) |
+
+P_T = 0.3 W is 24.8 dBm. With realistic jitter (σ_s0 ≤ 0.75 m) QPSK saturates at
+20 Gb/s, and the useful figure of merit is the power margin: about 13 dB for 1 %
+outage at σ_s0 = 0.5 m. The pointing fade margin for 1 % outage is
+ε^(−1/α): 6.2 dB at σ_s0 = 0.5 m and 1.6 dB at 0.25 m. Below about 0.5 m the rest of
+the requirement is set by receiver sensitivity, which is where the CSPR penalty of
+the transmitter carrier matters.
+
+Feasible range window at P_T = 0.3 W (EDFA):
+
+| σ_s0 | 1 % outage | 0.1 % outage |
+|---|---|---|
+| 0.25 m | 100–3000 km | 100–2750 km |
+| 0.5 m | 200–2050 km | 300–1750 km |
+| 0.75 m | 400–1400 km | none |
+| ≥ 1 m | none | none |
+
+The window has a lower edge because in the jitter model of Shang et al. σ_s is a
+length that grows only slowly with range, while the beam radius grows in
+proportion to range; at short range the beam is narrower than the jitter. With
+angular jitter (σ_s = z·σ_θ) α would not depend on range (see
+`open_questions.md`).
+
+## 9. BER near the FEC threshold (`RUN.berfec`, Section 14)
+
+QPSK, 8 runs × 2¹⁷ symbols (2.09 × 10⁶ bits per point), pointing states chosen
+where the analytic BER equals the target:
+
+| Target (analytic) | y/A₀ | Counted BER (95 % interval) | Errors |
+|---|---|---|---|
+| 3.8 × 10⁻³ (HD-FEC) | 0.0123 | 3.76 × 10⁻³ ± 0.08 × 10⁻³ | 7849 |
+| 1.0 × 10⁻⁴ | 0.0188 | 0.98 × 10⁻⁴ ± 0.13 × 10⁻⁴ | 205 |
+
+The BER, not only the SNR, matches the analytic model where it matters for FEC.

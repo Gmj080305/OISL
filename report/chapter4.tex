@@ -7,17 +7,17 @@ This report presented an end-to-end analytical model for an optical inter-satell
 \begin{enumerate}
 \item \textbf{Achievable rates.} At a link distance of 1000\,km, transmit power $P_T=0.3$\,W and ITU-T C-band wavelength 1530\,nm, the ergodic QPSK rate is 13.18\,Gbps (hard decision) and 13.44\,Gbps (soft decision) with an EDFA pre-amplifier. Without the pre-amplifier the rate drops to 6.70\,Gbps, because the receiver becomes thermal-noise limited rather than ASE limited.
 
-\item \textbf{Reconstruction penalty and CSPR optimisation.} The KK reconstruction penalty, modelled as $1/g_{recon}=\mathrm{PAPR}_s\cdot P_{viol}(\kappa)$, produces a bell-shaped rate-vs-CSPR curve. At the design CSPR of 12\,dB the penalty is negligible ($>60$\,dB for QPSK), but it rises steeply below $\kappa\approx\mathrm{PAPR}_s$ and determines the optimal CSPR of $\kappa^\star\approx9$--$10$\,dB. This provides a principled method for selecting the CSPR rather than relying on rules of thumb.
+\item \textbf{Noise model and CSPR optimisation.} The analytic noise model agrees with the end-to-end waveform simulation within 0.15\,dB for $\kappa\ge12$\,dB. A closed-form Gaussian bound on the KK reconstruction penalty, $\mathrm{PAPR}_s\cdot P_{viol}(\kappa)$, turned out 35--50\,dB too pessimistic and is not used. The waveform simulation places the optimum CSPR at about 7\,dB on-axis and 9\,dB in deep fades, 2--3\,dB better than the 12\,dB design value, in agreement with the 7--8\,dB measured by Wen \emph{et al.}
 
-\item \textbf{Carrier placement.} The constellation-level comparison of four carrier/LO configurations confirmed that KK phase retrieval requires a carrier at the photodiode input. Configurations without a carrier (A1/B3 and B2) fail because square-law detection destroys optical phase irreversibly; the Hilbert-transform relation holds only when the field is minimum-phase. The transmitter-side carrier (A2) and receiver-side optical LO (B1) both produce clean constellations, but only the transmitter-side carrier cancels Doppler, phase noise and polarisation rotation without additional hardware.
+\item \textbf{Carrier placement.} The constellation-level comparison of four carrier/LO configurations confirmed that KK phase retrieval requires a carrier at the photodiode input. Configurations without an optical carrier at the photodiode (A1/B3, and B2 where the carrier is added digitally after detection) fail because square-law detection destroys optical phase irreversibly; the Hilbert-transform relation holds only when the field is minimum-phase. The transmitter-side carrier (A2) and receiver-side optical LO (B1) both produce clean constellations. An ideal receiver LO is 6.2\,dB better, which is the CSPR penalty; only the transmitter-side carrier cancels Doppler, phase noise and polarisation rotation without additional hardware.
 
-\item \textbf{Detector radius.} The ergodic QPSK rate increases from 11.46\,Gbps at $w_d=0.04$\,m to 14.09\,Gbps at $w_d=0.10$\,m. The default $w_d=0.07$\,m (approximately 30\,\% below the beam waist) achieves 94\,\% of the maximum rate, a practical trade-off between aperture size and link margin.
+\item \textbf{Detector radius.} The ergodic QPSK rate increases from 11.46\,Gbps at $w_d=0.04$\,m to 14.09\,Gbps at $w_d=0.10$\,m. The default $w_d=0.07$\,m (30\,\% smaller than the transmitter waist $w_0$) reaches 94\,\% of the rate at the largest radius in the sweep.
 
-\item \textbf{ITU-T C-band.} The rate varies by less than 2\,\% between 1530 and 1565\,nm. Slightly higher beam divergence at 1565\,nm is compensated by a more favourable pointing shape parameter $\alpha$, so the system operates essentially flat across the C-band.
+\item \textbf{ITU-T C-band.} The rate varies by about 2\,\% between 1530 and 1565\,nm. Slightly higher beam divergence at 1565\,nm is compensated by a more favourable pointing shape parameter $\alpha$, so the system operates essentially flat across the C-band.
 
 \item \textbf{Reliability.} Under the jitter model of Shang \emph{et al.}, the pointing jitter $\sigma_s=5.44$\,m exceeds the beam radius $w_z=4.87$\,m at 1000\,km, yielding $\alpha=0.20$. The link spends 41\,\% of the time below the QPSK sensitivity even with the pre-amplifier. Pointing jitter, not the KK receiver architecture, is the reliability bottleneck.
 
-\item \textbf{Monte Carlo validation.} Channel-level Monte Carlo (200\,000 samples) matched the ergodic rate integral to within 0.02\,Gbps. Waveform-level Monte Carlo (full KK DSP with pulse shaping, ASE, shot, thermal and RIN noise) agreed with the analytical SNR model to within 0.2\,dB across the tested range of fading states.
+\item \textbf{Monte Carlo validation.} Channel-level Monte Carlo (200\,000 samples) matched the ergodic rate integral to within 0.02\,Gbps. The waveform simulation (full KK DSP with pulse shaping, ASE, shot, thermal and RIN noise) agreed with the analytic SNR within 0.1\,dB from $y=A_0$ to $0.03A_0$ and within 0.4\,dB at $0.01A_0$.
 \end{enumerate}
 
 \section{Limitations}
@@ -28,7 +28,13 @@ The model makes several simplifying assumptions:
 \item The EDFA gain is treated as fixed and noiseless apart from ASE. Gain saturation and transient effects under fading are not modelled.
 \item Atmospheric effects are absent (vacuum propagation). For links involving a ground station, turbulence-induced scintillation and beam wander would need to be added.
 \item Only single-carrier modulation is considered. Wavelength-division multiplexing (WDM) with multiple KK channels could increase aggregate throughput.
-\item The reconstruction penalty model uses the Gaussian approximation for the signal envelope. At very low CSPR (below PAPR), the actual penalty may differ.
+\item The analytic noise model is verified for $\kappa\ge12$\,dB only; below that, results come from the waveform simulation. No validated closed-form model of the KK reconstruction penalty is available.
+\item The default jitter ($\sigma_{s0}=2$\,m, $\alpha=0.20$) is a stress case taken from Shang \emph{et al.}; realistic pointing for operational terminals has not yet been evaluated.
+\item The residual Doppler offset and clock scaling are simulated with pilot-based recovery, but oscillator mismatch between transmitter and receiver (which requires timing recovery in any receiver) and Doppler rate within a frame are not.
+\item The receiver-LO comparison models LO frequency offset and linewidth but not polarisation mismatch, and the LO phase tracker is tuned per case (optimistic for B1).
+\item The jitter model gives $\sigma_s$ as a length; with angular jitter, $\alpha$ would not depend on range.
+\item With $2^{13}$ symbols per waveform run, bit-error rates below about $10^{-4}$ cannot be measured directly; dedicated runs with about $10^6$ symbols confirm the analytic BER at $3.8\times10^{-3}$ and $10^{-4}$.
+\item Hardware effects (modulator and driver nonlinearity, photodiode/TIA bandwidth, ADC resolution, EDFA gain dynamics) are not modelled.
 \end{itemize}
 
 \section{Future Work}
@@ -44,5 +50,9 @@ Several extensions would strengthen the model and bring it closer to a system-le
 
 \item \textbf{Multi-link scenarios.} In a constellation with relay hops, the end-to-end rate depends on the weakest link. Extending the model to a multi-hop OISL network with heterogeneous ranges and pointing conditions would be valuable for constellation design.
 
-\item \textbf{Experimental validation.} A benchtop demonstration of the transmitter-side-carrier KK receiver at 10\,GBaud, even without the free-space channel, would validate the noise model and the reconstruction penalty against measured data.
+\item \textbf{Realistic pointing.} With $\sigma_{s0}=0.5$\,m, 1\,\% outage at 1000\,km needs only 11.9\,dBm (13\,dB margin at 0.3\,W) and QPSK saturates at 20\,Gb/s; receiver sensitivity, and so the CSPR penalty, then sets the power budget. A study under an angular jitter model, and a comparison with coherent and IM/DD receivers under the same fading, would show where the transmitter carrier is the right choice.
+
+\item \textbf{Front-end distortion and MP-KK.} Once OptiSystem component models add hardware nonlinearity and memory, compare the conventional KK receiver with GKK and MP-KK pre-compensation~\cite{wen2023}; the simulation code for this comparison is already in place.
+
+\item \textbf{Experimental validation.} A benchtop demonstration of the transmitter-side-carrier KK receiver at 10\,GBaud, even without the free-space channel, would validate the noise model and the CSPR optimum against measured data.
 \end{enumerate}
